@@ -2,6 +2,7 @@ import type {
   AgentConfig,
   ConsentRecord,
   ConversationState,
+  EventRecord,
   OtpChallenge,
 } from "../core/types.js";
 
@@ -13,10 +14,13 @@ export interface PlatformStorePort {
 
   getConversation(tenantId: string, channel: string, conversationId: string, userId: string): Promise<ConversationState>;
   saveConversation(state: ConversationState): Promise<void>;
+  commitTurn(state: ConversationState, externalMessageId: string, outbound: EventRecord["outbound"], ttlSeconds?: number): Promise<void>;
   setConversationMode(tenantId: string, channel: string, conversationId: string, mode: "ai" | "human"): Promise<void>;
 
+  getEvent(externalMessageId: string): Promise<EventRecord | undefined>;
   isEventProcessed(externalMessageId: string): Promise<boolean>;
   markEventProcessed(externalMessageId: string, ttlSeconds?: number): Promise<void>;
+  completeEvent(externalMessageId: string): Promise<void>;
 
   claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean>;
   putOtpChallenge(challenge: OtpChallenge): Promise<void>;
