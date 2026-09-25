@@ -70,6 +70,28 @@ describe("validateAgentConfig", () => {
     expect(validateAgentConfig(value)).toEqual([]);
   });
 
+  it("accepts an OpenAI-compatible portable model config", () => {
+    const value = config();
+    value.model = {
+      provider: "openai",
+      model: "gpt-test",
+      apiKeySecret: { key: "models/openai" },
+      baseUrl: "https://api.openai.com/v1",
+      maxTokens: 2000,
+      temperature: 0.2,
+    };
+    expect(validateAgentConfig(value)).toEqual([]);
+  });
+
+  it("rejects non-portable tool schema keywords", () => {
+    const value = config();
+    value.tools[0]!.inputSchema = {
+      type: "object",
+      oneOf: [{ type: "string" }],
+    } as never;
+    expect(validateAgentConfig(value).some((issue) => issue.message.includes("portable tool-schema subset"))).toBe(true);
+  });
+
   it("validates OTP safety bounds", () => {
     const value = config();
     value.otp = {
