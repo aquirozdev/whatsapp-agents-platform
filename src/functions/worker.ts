@@ -53,7 +53,23 @@ async function authenticateApi(event: APIGatewayProxyEventV2) {
 }
 
 async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Promise<AgentRunResult | undefined> {
-  if (await store.isEventProcessed(inbound.externalMessageId)) return undefined;
+  const replyTarget = inbound.replyTarget ?? (inbound.replyTo ? {
+    value: inbound.replyTo,
+    kind: inbound.replyToType ?? "phone",
+  } : undefined);
+
+  const processed = await store.getProcessedEvent(inbound.externalMessageId);
+  if (processed) {
+    if (sendReply && replyTarget && !processed.deliveredAt && processed.outbound.length > 0) {
+      const replayTenant = processed.configVersion
+        ? await store.getTenantVersion(inbound.tenantId, processed.configVersion)
+        : await store.getTenant(inbound.tenantId);
+      if (!replayTenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled during outbound replay.`);
+      for (const message of processed.outbound) await whatsapp.send(replayTenant, replyTarget, message);
+      await store.markEventDelivered(inbound.externalMessageId);
+    }
+    return undefined;
+  }
 
   const tenant = await store.getTenant(inbound.tenantId);
   if (!tenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled.`);
@@ -67,16 +83,10 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
   try {
     const result = await runtime.execute(tenant, inbound);
 
-    const replyTarget = inbound.replyTarget ?? (inbound.replyTo ? {
-      value: inbound.replyTo,
-      kind: inbound.replyToType ?? "phone",
-    } : undefined);
-
     if (sendReply && replyTarget) {
       for (const message of result.outbound) await whatsapp.send(tenant, replyTarget, message);
     }
-
-    await store.markEventProcessed(inbound.externalMessageId);
+    await store.markEventDelivered(inbound.externalMessageId);
     return result;
   } finally {
     if (leaseOwner) await store.releaseConversationLease(tenant.tenantId, inbound.channel, inbound.conversationId, leaseOwner);
