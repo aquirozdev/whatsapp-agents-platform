@@ -44,7 +44,7 @@ export interface HttpToolConfig {
 
 export interface ToolBinding {
   name: string;
-  kind: "builtin" | "http";
+  kind: "builtin" | "http" | (string & {});
   description: string;
   inputSchema: JsonSchema;
   exposure?: ToolExposure;
@@ -52,6 +52,7 @@ export interface ToolBinding {
   verificationSubjectFrom?: string;
   requiresConsents?: ConsentRequirement[];
   http?: HttpToolConfig;
+  config?: Record<string, unknown>;
 }
 
 export interface WhatsAppChannelConfig {
