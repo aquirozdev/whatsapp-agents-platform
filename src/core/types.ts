@@ -281,6 +281,7 @@ export interface InboundEnvelope {
   externalMessageId: string;
   receivedAt: string;
   replyTo?: string;
+  replyToType?: "phone" | "whatsapp_user_id";
   metadata?: Record<string, unknown>;
 }
 
