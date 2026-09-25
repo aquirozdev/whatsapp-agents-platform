@@ -160,6 +160,7 @@ export class PlatformStore implements PlatformStorePort {
       tenantId: state.tenantId,
       channel: state.channel,
       conversationId: state.conversationId,
+      configVersion: state.configVersion,
       status: "prepared",
       outbound,
       createdAt: new Date().toISOString(),
