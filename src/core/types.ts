@@ -1,7 +1,16 @@
-export type ChannelKind = "whatsapp" | "web";
+export type ChannelKind = "whatsapp" | "web" | (string & {});
 export type ConversationMode = "ai" | "human";
 export type VerificationLevel = "none" | "otp";
 export type ToolExposure = "agent" | "workflow" | "both";
+
+export interface SecretRef {
+  key: string;
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+}
 
 export interface JsonSchema {
   type?: string;
@@ -9,7 +18,8 @@ export interface JsonSchema {
   required?: string[];
   additionalProperties?: boolean;
   enum?: unknown[];
-  [key: string]: unknown;
+  items?: JsonSchema;
+  description?: string;
 }
 
 export interface ConsentRequirement {
@@ -22,7 +32,7 @@ export interface HttpToolConfig {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   url: string;
   headers?: Record<string, string>;
-  secretHeaders?: Record<string, string>;
+  secretHeaders?: Record<string, string | SecretRef>;
   bodyTemplate?: unknown;
   timeoutMs?: number;
   idempotencyHeader?: string;
@@ -46,7 +56,9 @@ export interface ToolBinding {
 
 export interface WhatsAppChannelConfig {
   phoneNumberId: string;
-  accessTokenSecretArn: string;
+  accessTokenSecret?: SecretRef;
+  /** @deprecated Prefer accessTokenSecret for provider-neutral tenant specs. */
+  accessTokenSecretArn?: string;
   graphApiVersion: string;
   sendTimeoutMs?: number;
 }
@@ -237,7 +249,10 @@ export interface AgentConfig {
   displayName: string;
   enabled: boolean;
   systemPrompt: string;
+  model?: ModelConfig;
+  /** @deprecated Kept for backwards compatibility. Prefer model.provider + model.model. */
   modelId?: string;
+  configVersion?: number;
   maxToolRounds?: number;
   apiKeyHash?: string;
   whatsapp?: WhatsAppChannelConfig;
@@ -269,6 +284,8 @@ export interface ConversationState {
   messages: ChatMessage[];
   verification: VerificationState;
   workflow?: WorkflowState;
+  configVersion?: number;
+  revision?: number;
   updatedAt: string;
 }
 
@@ -280,7 +297,10 @@ export interface InboundEnvelope {
   text: string;
   externalMessageId: string;
   receivedAt: string;
+  replyTarget?: { value: string; kind?: string };
+  /** @deprecated Prefer replyTarget. */
   replyTo?: string;
+  /** @deprecated Prefer replyTarget.kind. */
   replyToType?: "phone" | "whatsapp_user_id";
   metadata?: Record<string, unknown>;
 }

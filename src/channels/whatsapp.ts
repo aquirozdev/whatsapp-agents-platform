@@ -1,5 +1,5 @@
 import type { AgentConfig, InboundEnvelope, OutboundMessage } from "../core/types.js";
-import { getSecret } from "../providers/secrets.js";
+import type { SecretProvider } from "../ports/secrets.js";
 
 interface MetaWebhookPayload {
   entry?: Array<{
@@ -67,6 +67,7 @@ export function toInboundEnvelope(tenant: AgentConfig, parsed: ParsedWhatsAppMes
     text: parsed.text,
     externalMessageId: parsed.externalMessageId,
     receivedAt: parsed.receivedAt,
+    replyTarget: { value: parsed.replyTo, kind: parsed.replyToType },
     replyTo: parsed.replyTo,
     replyToType: parsed.replyToType,
   };
@@ -76,9 +77,12 @@ export async function sendWhatsAppOutbound(
   tenant: AgentConfig,
   recipient: { value: string; type: "phone" | "whatsapp_user_id" },
   message: OutboundMessage,
+  secrets: SecretProvider,
 ): Promise<void> {
   if (!tenant.whatsapp) throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp configuration.`);
-  const token = await getSecret(tenant.whatsapp.accessTokenSecretArn);
+  const secretRef = tenant.whatsapp.accessTokenSecret ?? tenant.whatsapp.accessTokenSecretArn;
+  if (!secretRef) throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp access-token secret.`);
+  const token = await secrets.get(secretRef);
   const endpoint = `https://graph.facebook.com/${tenant.whatsapp.graphApiVersion}/${tenant.whatsapp.phoneNumberId}/messages`;
 
   const body = message.kind === "text"

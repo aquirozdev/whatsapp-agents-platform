@@ -55,8 +55,19 @@ describe("validateAgentConfig", () => {
     const issues = validateAgentConfig(value);
     expect(issues.some((issue) => issue.path === "whatsapp.phoneNumberId")).toBe(true);
     expect(issues.some((issue) => issue.path === "whatsapp.graphApiVersion")).toBe(true);
-    expect(issues.some((issue) => issue.path === "whatsapp.accessTokenSecretArn")).toBe(true);
+    expect(issues.some((issue) => issue.path === "whatsapp.accessTokenSecret")).toBe(true);
     expect(issues.some((issue) => issue.path === "whatsapp.sendTimeoutMs")).toBe(true);
+  });
+
+  it("accepts provider-neutral model and secret references", () => {
+    const value = config();
+    value.model = { provider: "bedrock", model: "test-model" };
+    value.whatsapp = {
+      phoneNumberId: "123456",
+      accessTokenSecret: { key: "whatsapp.token" },
+      graphApiVersion: "v23.0",
+    };
+    expect(validateAgentConfig(value)).toEqual([]);
   });
 
   it("validates OTP safety bounds", () => {

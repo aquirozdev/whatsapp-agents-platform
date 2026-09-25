@@ -2,7 +2,9 @@ import type { AgentConfig, ToolBinding, ToolContext, ToolExecutionResult } from 
 import { PolicyEngine } from "./policy-engine.js";
 import { executeHttpTool } from "../tools/http-tool.js";
 import { OtpService } from "../tools/otp-tools.js";
-import { PlatformStore } from "../storage/dynamo.js";
+import type { PlatformStorePort } from "../ports/store.js";
+import type { SecretProvider } from "../ports/secrets.js";
+import type { OtpDeliveryPort } from "../ports/otp-delivery.js";
 import { getPath } from "./template.js";
 import { validateToolInput } from "./input-validation.js";
 
@@ -12,7 +14,14 @@ export class ToolRegistry {
   private readonly policy = new PolicyEngine();
   private readonly otp: OtpService;
 
-  constructor(private readonly store: PlatformStore) { this.otp = new OtpService(store); }
+  constructor(
+    private readonly store: PlatformStorePort,
+    private readonly secrets: SecretProvider,
+    otpDelivery: OtpDeliveryPort,
+    otpHmacSecret: string,
+  ) {
+    this.otp = new OtpService(store, secrets, otpDelivery, otpHmacSecret);
+  }
 
   getAgentBindings(tenant: AgentConfig): ToolBinding[] {
     return tenant.tools.filter((binding) => (binding.exposure ?? "both") !== "workflow");
@@ -68,7 +77,7 @@ export class ToolRegistry {
 
     if (binding.kind === "http") {
       if (!binding.http) return { ok: false, error: { code: "INVALID_TOOL_CONFIG", message: `HTTP configuration missing for ${binding.name}.` } };
-      return executeHttpTool(binding.http, input, ctx.externalMessageId);
+      return executeHttpTool(binding.http, input, this.secrets, ctx.externalMessageId);
     }
 
     switch (binding.name) {
