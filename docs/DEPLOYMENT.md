@@ -26,6 +26,8 @@ npm run synth -- -c stage=dev -c defaultModelId='YOUR_MODEL_ID'
 npm run deploy -- \
   -c stage=dev \
   -c defaultModelId='YOUR_MODEL_ID' \
+  -c apiRateLimit=100 \
+  -c apiBurstLimit=200 \
   -c otpEmailFrom='no-reply@example.com'
 ```
 
@@ -126,3 +128,12 @@ No customer-specific Lambda fork is required.
 ## Removal
 
 The DynamoDB table has `RemovalPolicy.RETAIN`, so deleting the stack intentionally does not delete customer state. Remove retained data only through an explicit data-retention procedure.
+
+
+## HTTP API edge profile
+
+The default deployment intentionally uses API Gateway **HTTP API** for lower cost and a small operational footprint. The stage enables access logging, detailed metrics and configurable throttling.
+
+AWS documents a maximum HTTP API integration timeout of 30 seconds. Keep synchronous `POST /v1/chat` turns comfortably below that limit; use the queued WhatsApp path or an asynchronous integration pattern for slower jobs.
+
+AWS WAF integrates directly with API Gateway REST APIs, not HTTP APIs. If a regulated customer requires direct WAF association or REST usage plans/API-key quotas, use a dedicated edge profile (REST API or CloudFront/WAF in front of the service) rather than complicating the shared default stack.
