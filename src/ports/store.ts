@@ -33,6 +33,7 @@ export interface PlatformStorePort {
   markEventDelivered(externalMessageId: string, deliveredAt?: string): Promise<void>;
   recordOutboundReceipt(externalMessageId: string, receipt: ChannelDeliveryReceipt): Promise<void>;
   updateOutboundStatus(status: ChannelDeliveryStatus): Promise<void>;
+  claimToolRateSlot(tenantId: string, toolName: string, subject: string, windowSeconds: number, maxCalls: number): Promise<boolean>;
 
   claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean>;
   putOtpChallenge(challenge: OtpChallenge): Promise<void>;
