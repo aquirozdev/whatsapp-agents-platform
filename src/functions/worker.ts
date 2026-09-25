@@ -7,6 +7,9 @@ import { PlatformStore } from "../storage/dynamo.js";
 import { MetaWhatsAppChannel } from "../channels/whatsapp.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
+import { ToolExecutorRegistry } from "../ports/tool-executor.js";
+import { HttpToolExecutor } from "../tools/http-executor.js";
+import { BuiltinToolExecutor } from "../tools/builtin-executor.js";
 import { WorkflowRuntime } from "../workflows/runtime.js";
 import { ModelProviderRegistry } from "../ports/model.js";
 import { ConversationBusyError, ConversationConflictError } from "../ports/store.js";
@@ -19,7 +22,11 @@ const secrets = new AwsSecretsManagerProvider();
 const whatsapp = new MetaWhatsAppChannel(secrets);
 const otpDelivery = new AwsOtpDeliveryProvider();
 const otpHmacSecret = process.env.OTP_HMAC_SECRET_REF ?? process.env.OTP_HMAC_SECRET_ARN ?? "";
-const tools = new ToolRegistry(store, secrets, otpDelivery, otpHmacSecret);
+const toolExecutors = new ToolExecutorRegistry([
+  new HttpToolExecutor(secrets),
+  new BuiltinToolExecutor(store, secrets, otpDelivery, otpHmacSecret),
+]);
+const tools = new ToolRegistry(store, toolExecutors);
 const workflows = new WorkflowRuntime(store, tools);
 const models = new ModelProviderRegistry([new BedrockModelProvider()]);
 const defaultModel: ModelConfig | undefined = process.env.DEFAULT_MODEL_ID
