@@ -1,6 +1,6 @@
 # WhatsApp Agents Platform
 
-A small, multi-tenant, serverless runtime for enterprise conversational agents on **WhatsApp Cloud API** and a synchronous **Web/API** channel.
+A small, multi-tenant conversational-agent runtime with provider ports for models, state, secrets, ordered dispatch and channels. The reference deployment uses AWS serverless services, **WhatsApp Cloud API**, and a synchronous **Web/API** channel.
 
 The platform is intentionally customer-agnostic: one codebase, one AWS stack, many tenants. Customer behavior lives in configuration — prompts, tools, deterministic workflows, capabilities, policies and secrets — instead of forks such as `if (tenant === "bank-x")`.
 
@@ -9,7 +9,7 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - Official Meta WhatsApp Cloud API webhook + outbound text/document messages.
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
-- Amazon Bedrock Converse with client-side tool execution.
+- Provider-neutral model runtime with Amazon Bedrock and OpenAI-compatible adapters, both using client-side tool execution.
 - Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
@@ -20,8 +20,8 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - Document delivery through the current WhatsApp channel.
 - Human handoff state.
 - FIFO queue per conversation.
-- DynamoDB state, audit, OTP and processed-event dedupe.
-- Secrets Manager integration.
+- DynamoDB state, audit, OTP, immutable tenant config versions, optimistic conversation concurrency and durable turn/outbound records.
+- Portable secret references resolved by the deployment secret adapter (AWS Secrets Manager in the reference deployment).
 - AWS CDK infrastructure in TypeScript, with API access logs, detailed metrics and stage throttling.
 - Config validation, unit tests, CI and OpenAPI.
 - Zero-framework local admin for editing, validating and publishing tenant JSON.
@@ -42,8 +42,8 @@ Web/App  -> API Gateway ---------------------------->|
                                                      |
                            +-------------------------+----------------------+
                            |                         |                      |
-                        Bedrock                Workflow Runtime         Tool Registry
-                     conversational              deterministic          HTTP / OTP
+                    ModelProvider             Workflow Runtime         Tool Registry
+                 Bedrock / OpenAI-*              deterministic          HTTP / OTP
                            |                         |                      |
                            +-------------------------+----------------------+
                                                      |
@@ -53,6 +53,22 @@ Web/App  -> API Gateway ---------------------------->|
 The LLM routes normal conversation and can select a configured workflow through the reserved `start_workflow` tool. Once a workflow starts, the LLM is removed from the transactional control path until that process completes, expires or is cancelled.
 
 See [Architecture](docs/ARCHITECTURE.md) and [Deterministic workflows](docs/WORKFLOWS.md).
+
+## Portability boundaries
+
+The product core does not import cloud or model SDKs. It depends on small contracts under `src/ports/`:
+
+- `ModelProvider` — model/tool-call protocol.
+- `PlatformStorePort` — tenant, conversation, consent, verification, audit and atomic turn persistence.
+- `TurnDispatcher` — at-least-once delivery with per-conversation serialization.
+- `SecretProvider` — logical secret references.
+- `ToolExecutor` — integration execution behind policy/schema enforcement.
+- `OutboundChannel` — outbound transport.
+- `OtpDeliveryProvider` — built-in OTP delivery.
+
+AWS is composed in `src/composition/aws.ts`; changing cloud or model provider does not change workflow definitions or customer business logic. Architecture-boundary tests fail CI if cloud/model SDK imports leak into core/workflows/ports.
+
+See [Portability](docs/PORTABILITY.md).
 
 ## Why this stays agnostic
 
@@ -192,7 +208,7 @@ Tools integrate customer systems without adding AWS services.
     "method": "POST",
     "url": "https://core.example.com/accounts/balance",
     "secretHeaders": {
-      "Authorization": "arn:aws:secretsmanager:...:secret:core-auth"
+      "Authorization": { "key": "core-api/authorization" }
     },
     "bodyTemplate": { "accountId": "{{accountId}}" },
     "idempotencyHeader": "Idempotency-Key"
@@ -255,7 +271,9 @@ src/
   core/           types, policies, tool registry, config validation
   workflows/      deterministic workflow runtime
   functions/      Lambda entrypoints
-  providers/      Bedrock and Secrets Manager adapters
+  ports/          provider-neutral runtime contracts
+  providers/      model, queue, secrets and cloud adapters
+  composition/    deployment composition roots
   storage/        DynamoDB persistence
   tools/          HTTP and built-in OTP tools
   scripts/        tenant seeding CLI
