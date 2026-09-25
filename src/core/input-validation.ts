@@ -1,7 +1,12 @@
-import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
+import AjvModule, { type ErrorObject, type ValidateFunction } from "ajv";
 import type { JsonSchema } from "./types.js";
 
-const ajv = new Ajv({
+type AjvLike = {
+  compile(schema: object): ValidateFunction;
+};
+
+const AjvConstructor = AjvModule as unknown as new (options?: Record<string, unknown>) => AjvLike;
+const ajv = new AjvConstructor({
   allErrors: true,
   strict: false,
   allowUnionTypes: true,
@@ -31,8 +36,9 @@ export function validateToolInput(
   const key = schemaKey(schema);
   let validate = cache.get(key);
   if (!validate) {
-    validate = ajv.compile(schema);
-    cache.set(key, validate);
+    const compiled = ajv.compile(schema);
+    cache.set(key, compiled);
+    validate = compiled;
   }
 
   if (validate(input)) return { ok: true };
