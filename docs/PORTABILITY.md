@@ -38,7 +38,7 @@ The current deployment uses:
 - SQS FIFO for ordered conversation dispatch,
 - DynamoDB for state and immutable tenant-config versions,
 - Secrets Manager,
-- Bedrock Converse,
+- Bedrock Converse or an OpenAI-compatible model API,
 - SNS/SES for optional built-in OTP.
 
 These choices are not part of the domain model.
@@ -85,3 +85,7 @@ A new provider should require:
 3. no changes to workflow definitions, policy code or customer-specific branches.
 
 If a provider requires domain changes, first verify that the missing concept is a true platform capability rather than a vendor-specific feature.
+
+## OpenAI-compatible provider
+
+The runtime also includes an HTTP adapter for OpenAI-compatible Chat Completions APIs. It uses the same portable model/tool protocol and resolves its API key through the configured `SecretProvider`. This is an executable portability proof: switching model provider does not change workflows, policies, tools or conversation state.

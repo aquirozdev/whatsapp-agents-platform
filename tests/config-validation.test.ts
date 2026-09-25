@@ -70,6 +70,23 @@ describe("validateAgentConfig", () => {
     expect(validateAgentConfig(value)).toEqual([]);
   });
 
+  it("validates portable model endpoint, secret and inference bounds", () => {
+    const value = config();
+    value.model = {
+      provider: "openai",
+      model: "gpt-test",
+      apiKeySecret: { key: "" },
+      baseUrl: "http://localhost:9999",
+      maxTokens: 0,
+      temperature: 3,
+    };
+    const issues = validateAgentConfig(value);
+    expect(issues.some((issue) => issue.path === "model.apiKeySecret.key")).toBe(true);
+    expect(issues.some((issue) => issue.path === "model.baseUrl")).toBe(true);
+    expect(issues.some((issue) => issue.path === "model.maxTokens")).toBe(true);
+    expect(issues.some((issue) => issue.path === "model.temperature")).toBe(true);
+  });
+
   it("validates OTP safety bounds", () => {
     const value = config();
     value.otp = {

@@ -9,7 +9,7 @@ The platform is intentionally customer- and provider-agnostic: customer behavior
 - Official Meta WhatsApp Cloud API webhook + outbound text/document messages.
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
-- Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock Converse is the first adapter.
+- Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock Converse and OpenAI-compatible APIs are included adapters.
 - Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
@@ -175,6 +175,38 @@ A workflow-capable response includes both a compatibility `reply` string and str
   }
 }
 ```
+
+### Model providers
+
+Model selection is tenant configuration and is independent from the deployment cloud.
+
+Bedrock:
+
+```json
+{
+  "model": {
+    "provider": "bedrock",
+    "model": "YOUR_MODEL_OR_INFERENCE_PROFILE_ID"
+  }
+}
+```
+
+OpenAI-compatible API:
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "model": "YOUR_MODEL_ID",
+    "apiKeySecret": { "key": "tenant/customer/openai-api-key" },
+    "baseUrl": "https://api.openai.com/v1",
+    "maxTokens": 1200,
+    "temperature": 0.2
+  }
+}
+```
+
+The AWS deployment resolves `apiKeySecret` from Secrets Manager. A future deployment adapter can resolve the same logical secret reference from another secret store.
 
 ## Tools
 
