@@ -6,7 +6,7 @@ The default rule is **keep the platform small**. Add a service only when a real 
 
 - official WhatsApp Cloud API
 - Web/API chat
-- provider-neutral `ModelProvider` orchestration with Bedrock adapter
+- provider-neutral `ModelProvider` orchestration with Bedrock and OpenAI-compatible adapters
 - provider-neutral storage, dispatch, secrets and OTP-delivery ports
 - multi-tenancy
 - deterministic transactional workflows
@@ -56,7 +56,6 @@ Git is enough for configuration history and review for many deployments. Custome
 
 Prioritize these when a concrete integration needs them:
 
-- a second model adapter as a portability contract test (OpenAI, Anthropic direct or Vertex)
 - more reusable connector templates (REST/SOAP/GraphQL)
 - richer WhatsApp outbound messages (templates, buttons, lists, media)
 - optional `search_knowledge` tool behind a small KnowledgeProvider interface
