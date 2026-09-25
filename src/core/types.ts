@@ -66,6 +66,11 @@ export interface ToolBinding {
   verificationSubjectFrom?: string;
   requiresConsents?: ConsentRequirement[];
   http?: HttpToolConfig;
+  rateLimit?: {
+    maxCalls: number;
+    windowSeconds: number;
+    scope?: "tenant" | "user" | "conversation";
+  };
   config?: Record<string, unknown>;
 }
 
