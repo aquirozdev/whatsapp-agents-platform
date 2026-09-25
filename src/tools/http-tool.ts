@@ -1,5 +1,5 @@
-import type { HttpToolConfig, ToolExecutionResult } from "../core/types.js";
-import { getSecret } from "../providers/secrets.js";
+import type { HttpToolConfig, SecretRef, ToolExecutionResult } from "../core/types.js";
+import type { SecretProvider } from "../ports/secrets.js";
 import { getPath, renderValue } from "../core/template.js";
 
 function renderUrl(template: string, input: Record<string, unknown>): string {
@@ -30,56 +30,78 @@ function validateDestination(config: HttpToolConfig, renderedUrl: string): URL {
   return url;
 }
 
-export async function executeHttpTool(
-  config: HttpToolConfig,
-  input: Record<string, unknown>,
-  externalMessageId?: string,
-): Promise<ToolExecutionResult> {
-  try {
-    const url = validateDestination(config, renderUrl(config.url, input));
-    const headers: Record<string, string> = { Accept: "application/json", ...(config.headers ?? {}) };
-    for (const [header, secretArn] of Object.entries(config.secretHeaders ?? {})) headers[header] = await getSecret(secretArn);
-    if (config.idempotencyHeader && externalMessageId) headers[config.idempotencyHeader] = externalMessageId;
+function asSecretRef(value: string | SecretRef): SecretRef {
+  return typeof value === "string" ? { key: value } : value;
+}
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 10000);
+export class HttpToolExecutor {
+  constructor(private readonly secrets: SecretProvider) {}
+
+  async execute(
+    config: HttpToolConfig,
+    input: Record<string, unknown>,
+    externalMessageId?: string,
+  ): Promise<ToolExecutionResult> {
     try {
-      const body = config.method === "GET" || config.method === "DELETE"
-        ? undefined
-        : JSON.stringify(config.bodyTemplate === undefined ? input : renderValue(config.bodyTemplate, input));
-      if (body) headers["Content-Type"] ??= "application/json";
-
-      const response = await fetch(url, {
-        method: config.method,
-        headers,
-        body,
-        signal: controller.signal,
-        redirect: "error",
-      });
-
-      const maxBytes = config.maxResponseBytes ?? 1024 * 1024;
-      const declaredLength = Number(response.headers.get("content-length") ?? "0");
-      if (declaredLength > maxBytes) {
-        return { ok: false, error: { code: "HTTP_RESPONSE_TOO_LARGE", message: `Upstream response exceeds ${maxBytes} bytes.` } };
+      const url = validateDestination(config, renderUrl(config.url, input));
+      const headers: Record<string, string> = { Accept: "application/json", ...(config.headers ?? {}) };
+      for (const [header, secretRef] of Object.entries(config.secretHeaders ?? {})) {
+        headers[header] = await this.secrets.get(asSecretRef(secretRef));
       }
+      if (config.idempotencyHeader && externalMessageId) headers[config.idempotencyHeader] = externalMessageId;
 
-      const text = await response.text();
-      if (Buffer.byteLength(text, "utf8") > maxBytes) {
-        return { ok: false, error: { code: "HTTP_RESPONSE_TOO_LARGE", message: `Upstream response exceeds ${maxBytes} bytes.` } };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 10000);
+      try {
+        const body = config.method === "GET" || config.method === "DELETE"
+          ? undefined
+          : JSON.stringify(config.bodyTemplate === undefined ? input : renderValue(config.bodyTemplate, input));
+        if (body) headers["Content-Type"] ??= "application/json";
+
+        const response = await fetch(url, {
+          method: config.method,
+          headers,
+          body,
+          signal: controller.signal,
+          redirect: "error",
+        });
+
+        const maxBytes = config.maxResponseBytes ?? 1024 * 1024;
+        const declaredLength = Number(response.headers.get("content-length") ?? "0");
+        if (declaredLength > maxBytes) {
+          return { ok: false, error: { code: "HTTP_RESPONSE_TOO_LARGE", message: `Upstream response exceeds ${maxBytes} bytes.` } };
+        }
+
+        const text = await response.text();
+        if (Buffer.byteLength(text, "utf8") > maxBytes) {
+          return { ok: false, error: { code: "HTTP_RESPONSE_TOO_LARGE", message: `Upstream response exceeds ${maxBytes} bytes.` } };
+        }
+
+        let data: unknown = text;
+        try { data = text ? JSON.parse(text) : null; } catch { /* valid plain text */ }
+
+        if (!response.ok) {
+          return {
+            ok: false,
+            error: {
+              code: `HTTP_${response.status}`,
+              message: typeof data === "string" ? data.slice(0, 1000) : JSON.stringify(data).slice(0, 1000),
+            },
+          };
+        }
+        if (config.responsePath) data = getPath(data, config.responsePath);
+        return { ok: true, data };
+      } finally {
+        clearTimeout(timeout);
       }
-
-      let data: unknown = text;
-      try { data = text ? JSON.parse(text) : null; } catch { /* valid plain text */ }
-
-      if (!response.ok) {
-        return { ok: false, error: { code: `HTTP_${response.status}`, message: typeof data === "string" ? data.slice(0, 1000) : JSON.stringify(data).slice(0, 1000) } };
-      }
-      if (config.responsePath) data = getPath(data, config.responsePath);
-      return { ok: true, data };
-    } finally {
-      clearTimeout(timeout);
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: "HTTP_TOOL_ERROR",
+          message: error instanceof Error ? error.message : "Unknown HTTP tool error",
+        },
+      };
     }
-  } catch (error) {
-    return { ok: false, error: { code: "HTTP_TOOL_ERROR", message: error instanceof Error ? error.message : "Unknown HTTP tool error" } };
   }
 }
