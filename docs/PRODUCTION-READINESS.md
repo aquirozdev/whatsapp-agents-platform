@@ -155,10 +155,10 @@ The repository documents what to measure; production customers should choose thr
 
 These are intentionally not hidden:
 
-- no visual tenant/admin portal yet;
+- tenant configuration uses JSON plus a localhost-only admin rather than a hosted multi-user portal;
 - no operator inbox UI yet;
-- API-key authentication is the current Web/API control plane mechanism;
-- no OIDC/SSO/RBAC UI yet;
+- API-key authentication is the current Web/API application mechanism;
+- no hosted OIDC/SSO/RBAC control plane by default;
 - no built-in RAG/knowledge-base ingestion yet;
 - no interactive WhatsApp list/button outbound rendering yet;
 - no built-in immutable cross-account audit export yet;
