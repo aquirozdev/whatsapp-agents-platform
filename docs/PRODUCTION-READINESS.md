@@ -10,7 +10,7 @@ Implemented in the platform core:
 
 - official Meta WhatsApp Cloud API webhook and outbound messaging;
 - multi-tenant tenant resolution by Meta `phone_number_id`;
-- provider-neutral model orchestration with Bedrock Converse as the first production adapter;
+- provider-neutral model orchestration with Bedrock Converse and OpenAI-compatible adapters;
 - deterministic transactional workflows outside the LLM;
 - runtime JSON Schema validation for every tool input;
 - workflow-only tool exposure for sensitive integrations;
@@ -140,8 +140,8 @@ Transactional workflow input is intentionally kept out of the normal LLM history
 At minimum define:
 
 - webhook acceptance availability;
-- queue age threshold;
-- DLQ alarm threshold;
+- queue age threshold (baseline CloudWatch alarm included; tune per SLA);
+- DLQ alarm threshold (baseline CloudWatch alarm included; tune per SLA);
 - Worker error-rate threshold;
 - Bedrock latency/error threshold;
 - upstream tool latency/error threshold;
