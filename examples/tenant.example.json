@@ -9,7 +9,7 @@
     "graphApiVersion": "v26.0",
     "sendTimeoutMs": 10000,
     "accessTokenSecret": {
-      "key": "whatsapp.access-token"
+      "key": "tenant/cooperativa-demo/whatsapp-token"
     }
   },
   "otp": {
@@ -112,7 +112,7 @@
         },
         "secretHeaders": {
           "Authorization": {
-            "key": "core-api.authorization"
+            "key": "tenant/cooperativa-demo/core-api-auth"
           }
         },
         "bodyTemplate": {
