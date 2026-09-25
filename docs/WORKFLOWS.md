@@ -281,3 +281,7 @@ This is reusable for products, policies, vehicles, orders, appointments and othe
 Transactional inputs are intentionally not copied into the free-form Bedrock conversation history while a workflow is active.
 
 Workflow data is cleared on completion, cancellation and expiry by default. Use `retainDataOnCompletion: true` only when there is a documented retention requirement.
+
+## Rich channel messages
+
+A workflow may emit a portable `message` step whose payload is an `OutboundMessage`. This supports deterministic text, document, image, interactive button/list, and approved-template messages without asking the model to reproduce channel payloads. Channel adapters translate only the message kinds they advertise through their capability contract.
