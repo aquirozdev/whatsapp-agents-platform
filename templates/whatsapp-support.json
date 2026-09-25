@@ -6,9 +6,11 @@
   "maxToolRounds": 4,
   "whatsapp": {
     "phoneNumberId": "123456789012345",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/customer/whatsapp-token",
     "graphApiVersion": "v26.0",
-    "sendTimeoutMs": 10000
+    "sendTimeoutMs": 10000,
+    "accessTokenSecret": {
+      "key": "tenant/customer-whatsapp/whatsapp-token"
+    }
   },
   "tools": [
     {
@@ -18,9 +20,13 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "reason": { "type": "string" }
+          "reason": {
+            "type": "string"
+          }
         },
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "additionalProperties": false
       }
     }

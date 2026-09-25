@@ -154,10 +154,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
         }
       }
 
-      await store.putTenant(runtimeConfig);
+      const configVersion = await store.putTenant(runtimeConfig);
       json(res, 200, {
         ok: true,
         tenantId: runtimeConfig.tenantId,
+        configVersion,
         apiKeyUpdated: Boolean(apiKey),
         table: process.env.TABLE_NAME ?? "WhatsappAgentsPlatform",
       });

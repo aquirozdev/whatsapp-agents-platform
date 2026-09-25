@@ -1,14 +1,38 @@
 import { randomUUID } from "node:crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, SQSBatchResponse, SQSEvent } from "aws-lambda";
 import { AgentRuntime } from "../core/agent-runtime.js";
-import type { AgentRunResult, InboundEnvelope } from "../core/types.js";
+import type { AgentRunResult, InboundEnvelope, ModelConfig } from "../core/types.js";
 import { sha256, safeEqualHex } from "../core/security.js";
 import { PlatformStore } from "../storage/dynamo.js";
-import { sendWhatsAppOutbound } from "../channels/whatsapp.js";
+import { MetaWhatsAppChannel } from "../channels/whatsapp.js";
 import { log } from "../core/logger.js";
+import { ToolRegistry } from "../core/tool-registry.js";
+import { ToolExecutorRegistry } from "../ports/tool-executor.js";
+import { HttpToolExecutor } from "../tools/http-executor.js";
+import { BuiltinToolExecutor } from "../tools/builtin-executor.js";
+import { WorkflowRuntime } from "../workflows/runtime.js";
+import { ModelProviderRegistry } from "../ports/model.js";
+import { ConversationBusyError, ConversationConflictError } from "../ports/store.js";
+import { AwsSecretsManagerProvider } from "../adapters/aws/secrets-manager.js";
+import { AwsOtpDeliveryProvider } from "../adapters/aws/otp-delivery.js";
+import { BedrockModelProvider } from "../adapters/aws/bedrock-model.js";
 
 const store = new PlatformStore();
-const runtime = new AgentRuntime(store);
+const secrets = new AwsSecretsManagerProvider();
+const whatsapp = new MetaWhatsAppChannel(secrets);
+const otpDelivery = new AwsOtpDeliveryProvider();
+const otpHmacSecret = process.env.OTP_HMAC_SECRET_REF ?? process.env.OTP_HMAC_SECRET_ARN ?? "";
+const toolExecutors = new ToolExecutorRegistry([
+  new HttpToolExecutor(secrets),
+  new BuiltinToolExecutor(store, secrets, otpDelivery, otpHmacSecret),
+]);
+const tools = new ToolRegistry(store, toolExecutors);
+const workflows = new WorkflowRuntime(store, tools);
+const models = new ModelProviderRegistry([new BedrockModelProvider()]);
+const defaultModel: ModelConfig | undefined = process.env.DEFAULT_MODEL_ID
+  ? { provider: process.env.DEFAULT_MODEL_PROVIDER ?? "bedrock", model: process.env.DEFAULT_MODEL_ID }
+  : undefined;
+const runtime = new AgentRuntime(store, models, tools, workflows, { defaultModel });
 
 const MAX_WEB_MESSAGE_CHARS = 8000;
 const MAX_WEB_ID_CHARS = 256;
@@ -36,23 +60,47 @@ async function authenticateApi(event: APIGatewayProxyEventV2) {
 }
 
 async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Promise<AgentRunResult | undefined> {
-  if (await store.isEventProcessed(inbound.externalMessageId)) return undefined;
+  const replyTarget = inbound.replyTarget ?? (inbound.replyTo ? {
+    value: inbound.replyTo,
+    kind: inbound.replyToType ?? "phone",
+  } : undefined);
+
+  const processed = await store.getProcessedEvent(inbound.externalMessageId);
+  if (processed) {
+    if (sendReply && replyTarget && !processed.deliveredAt && processed.outbound.length > 0) {
+      const replayTenant = processed.configVersion
+        ? await store.getTenantVersion(inbound.tenantId, processed.configVersion)
+        : await store.getTenant(inbound.tenantId);
+      if (!replayTenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled during outbound replay.`);
+      for (const message of processed.outbound) await whatsapp.send(replayTenant, replyTarget, message);
+      await store.markEventDelivered(inbound.externalMessageId);
+    }
+    return undefined;
+  }
 
   const tenant = await store.getTenant(inbound.tenantId);
   if (!tenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled.`);
 
-  const result = await runtime.execute(tenant, inbound);
-
-  if (sendReply && inbound.replyTo) {
-    const recipient = {
-      value: inbound.replyTo,
-      type: inbound.replyToType ?? "phone",
-    } as const;
-    for (const message of result.outbound) await sendWhatsAppOutbound(tenant, recipient, message);
+  const leaseOwner = inbound.channel === "web" ? randomUUID() : undefined;
+  if (leaseOwner) {
+    const acquired = await store.acquireConversationLease(tenant.tenantId, inbound.channel, inbound.conversationId, leaseOwner);
+    if (!acquired) throw new ConversationBusyError();
   }
 
-  await store.markEventProcessed(inbound.externalMessageId);
-  return result;
+  try {
+    const result = await runtime.execute(tenant, inbound);
+
+    if (sendReply && replyTarget) {
+      const sendTenant = result.state.configVersion && result.state.configVersion !== tenant.configVersion
+        ? (await store.getTenantVersion(tenant.tenantId, result.state.configVersion) ?? tenant)
+        : tenant;
+      for (const message of result.outbound) await whatsapp.send(sendTenant, replyTarget, message);
+    }
+    await store.markEventDelivered(inbound.externalMessageId);
+    return result;
+  } finally {
+    if (leaseOwner) await store.releaseConversationLease(tenant.tenantId, inbound.channel, inbound.conversationId, leaseOwner);
+  }
 }
 
 async function handleSqs(event: SQSEvent): Promise<SQSBatchResponse> {
@@ -91,9 +139,7 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
     if (userId.length > MAX_WEB_ID_CHARS || (requestedConversationId?.length ?? 0) > MAX_WEB_ID_CHARS) {
       return json(400, { error: "identifier_too_long", maxChars: MAX_WEB_ID_CHARS });
     }
-    if (message.length > MAX_WEB_MESSAGE_CHARS) {
-      return json(413, { error: "message_too_large", maxChars: MAX_WEB_MESSAGE_CHARS });
-    }
+    if (message.length > MAX_WEB_MESSAGE_CHARS) return json(413, { error: "message_too_large", maxChars: MAX_WEB_MESSAGE_CHARS });
 
     const conversationId = requestedConversationId || userId;
     const inbound: InboundEnvelope = {
@@ -106,16 +152,24 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
       receivedAt: new Date().toISOString(),
     };
 
-    const result = await processInbound(inbound, false);
-    return json(200, {
-      reply: result?.text ?? "",
-      messages: result?.outbound ?? [],
-      conversationId,
-      workflow: result?.state.workflow ? {
-        id: result.state.workflow.workflowId,
-        status: result.state.workflow.status,
-      } : undefined,
-    });
+    try {
+      const result = await processInbound(inbound, false);
+      return json(200, {
+        reply: result?.text ?? "",
+        messages: result?.outbound ?? [],
+        conversationId,
+        revision: result?.state.revision,
+        workflow: result?.state.workflow ? {
+          id: result.state.workflow.workflowId,
+          status: result.state.workflow.status,
+        } : undefined,
+      });
+    } catch (error) {
+      if (error instanceof ConversationBusyError || error instanceof ConversationConflictError) {
+        return json(409, { error: "conversation_busy", retryable: true });
+      }
+      throw error;
+    }
   }
 
   const modeMatch = path.match(/^\/v1\/conversations\/(whatsapp|web)\/([^/]+)\/mode$/);

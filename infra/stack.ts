@@ -39,7 +39,7 @@ export class PlatformStack extends Stack {
     const queue = new Queue(this, "AgentEvents", {
       fifo: true,
       queueName: `whatsapp-agents-${props.stage}.fifo`,
-      visibilityTimeout: Duration.seconds(120),
+      visibilityTimeout: Duration.seconds(600),
       retentionPeriod: Duration.days(4),
       deadLetterQueue: { queue: dlq, maxReceiveCount: 5 },
     });
@@ -59,9 +59,13 @@ export class PlatformStack extends Stack {
 
     const commonEnvironment = {
       TABLE_NAME: table.tableName,
+      META_APP_SECRET_REF: metaAppSecret.secretArn,
       META_APP_SECRET_ARN: metaAppSecret.secretArn,
+      WHATSAPP_VERIFY_TOKEN_SECRET_REF: verifyToken.secretArn,
       WHATSAPP_VERIFY_TOKEN_SECRET_ARN: verifyToken.secretArn,
+      OTP_HMAC_SECRET_REF: otpHmacSecret.secretArn,
       OTP_HMAC_SECRET_ARN: otpHmacSecret.secretArn,
+      DEFAULT_MODEL_PROVIDER: String(this.node.tryGetContext("defaultModelProvider") ?? "bedrock"),
       DEFAULT_MODEL_ID: String(this.node.tryGetContext("defaultModelId") ?? ""),
       OTP_EMAIL_FROM: String(this.node.tryGetContext("otpEmailFrom") ?? ""),
     };

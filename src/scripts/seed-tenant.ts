@@ -33,6 +33,6 @@ if (issues.length > 0) {
   process.exit(1);
 }
 
-await store.putTenant(config);
-console.log(`Tenant ${config.tenantId} saved.`);
+const configVersion = await store.putTenant(config);
+console.log(`Tenant ${config.tenantId} saved as config version ${configVersion}.`);
 if (apiKey) console.log("API key hash was derived locally; the plaintext key was not stored.");

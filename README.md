@@ -1,15 +1,15 @@
 # WhatsApp Agents Platform
 
-A small, multi-tenant, serverless runtime for enterprise conversational agents on **WhatsApp Cloud API** and a synchronous **Web/API** channel.
+A small, multi-tenant, provider-neutral runtime for enterprise conversational agents. The first production deployment adapter targets **AWS**, with official **WhatsApp Cloud API** and a synchronous **Web/API** channel.
 
-The platform is intentionally customer-agnostic: one codebase, one AWS stack, many tenants. Customer behavior lives in configuration — prompts, tools, deterministic workflows, capabilities, policies and secrets — instead of forks such as `if (tenant === "bank-x")`.
+The platform is intentionally customer- and provider-agnostic: customer behavior lives in portable configuration — prompts, tools, deterministic workflows, capabilities and policies — while model, storage, queue/serialization, secrets and OTP delivery are injected through small ports. AWS is the first adapter set, not part of the business core.
 
 ## What is included
 
 - Official Meta WhatsApp Cloud API webhook + outbound text/document messages.
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
-- Amazon Bedrock Converse with client-side tool execution.
+- Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock Converse is the first adapter.
 - Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
@@ -19,11 +19,13 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - Deterministic selections, confirmations, branching and rendering.
 - Document delivery through the current WhatsApp channel.
 - Human handoff state.
-- FIFO queue per conversation.
-- DynamoDB state, audit, OTP and processed-event dedupe.
-- Secrets Manager integration.
+- Serialized turn dispatch per conversation; AWS uses SQS FIFO.
+- Immutable tenant configuration versions and workflow config pinning.
+- Optimistic conversation revisions plus leases for synchronous Web/API turns.
+- DynamoDB state, audit, OTP and processed-event dedupe through a storage port.
+- Logical secret references; AWS Secrets Manager is the first secret adapter.
 - AWS CDK infrastructure in TypeScript, with API access logs, detailed metrics and stage throttling.
-- Config validation, unit tests, CI and OpenAPI.
+- Config validation, architecture-boundary tests, unit tests, Floci-backed AWS adapter integration tests, CI and OpenAPI.
 - Zero-framework local admin for editing, validating and publishing tenant JSON.
 
 ## Runtime architecture
@@ -42,12 +44,12 @@ Web/App  -> API Gateway ---------------------------->|
                                                      |
                            +-------------------------+----------------------+
                            |                         |                      |
-                        Bedrock                Workflow Runtime         Tool Registry
-                     conversational              deterministic          HTTP / OTP
+                    ModelProvider              Workflow Runtime         Tool Registry
+                    (Bedrock today)              deterministic          HTTP / OTP
                            |                         |                      |
                            +-------------------------+----------------------+
                                                      |
-                                             Policy / DynamoDB
+                                      Ports -> AWS adapters -> DynamoDB/Secrets
 ```
 
 The LLM routes normal conversation and can select a configured workflow through the reserved `start_workflow` tool. Once a workflow starts, the LLM is removed from the transactional control path until that process completes, expires or is cancelled.
@@ -95,7 +97,7 @@ Customer RFCs and derived confidential details must not be committed to this pub
 npm install
 npm run typecheck
 npm test
-npm run synth -- -c stage=test -c defaultModelId=dummy-model
+npm run synth -- -c stage=test -c defaultModelProvider=bedrock -c defaultModelId=dummy-model
 npm run validate:tenant -- examples/financial-institution.reference.json
 ```
 
@@ -105,6 +107,7 @@ npm run validate:tenant -- examples/financial-institution.reference.json
 npx cdk bootstrap
 npm run deploy -- \
   -c stage=dev \
+  -c defaultModelProvider=bedrock \
   -c defaultModelId='YOUR_BEDROCK_MODEL_OR_INFERENCE_PROFILE_ID' \
   -c otpEmailFrom='no-reply@example.com'
 ```
@@ -192,7 +195,7 @@ Tools integrate customer systems without adding AWS services.
     "method": "POST",
     "url": "https://core.example.com/accounts/balance",
     "secretHeaders": {
-      "Authorization": "arn:aws:secretsmanager:...:secret:core-auth"
+      "Authorization": { "key": "tenant/customer/core-api-auth" }
     },
     "bodyTemplate": { "accountId": "{{accountId}}" },
     "idempotencyHeader": "Idempotency-Key"
@@ -242,7 +245,8 @@ curl -X POST "$API_URL/v1/conversations/whatsapp/<conversation-id>/mode" \
 - **Tools are the integration boundary.**
 - **Policies are outside the prompt.**
 - **Channels are transport adapters.**
-- **Few AWS services.**
+- **Few runtime services.**
+- **Cloud/model portability through ports and adapters, not provider conditionals.**
 - **Official WhatsApp API only.**
 - **Same application for shared or dedicated deployments.**
 
@@ -251,13 +255,14 @@ curl -X POST "$API_URL/v1/conversations/whatsapp/<conversation-id>/mode" \
 ```text
 src/
   admin/          optional localhost-only JSON editor/publisher
-  channels/       WhatsApp parsing and outbound adapters
-  core/           types, policies, tool registry, config validation
+  channels/       channel protocol adapters (Meta WhatsApp today)
+  core/           provider-neutral runtime, types, policies, tool registry
+  ports/          model, storage, dispatch, secrets and OTP contracts
+  adapters/aws/   Bedrock, SQS, Secrets Manager and OTP delivery adapters
   workflows/      deterministic workflow runtime
-  functions/      Lambda entrypoints
-  providers/      Bedrock and Secrets Manager adapters
-  storage/        DynamoDB persistence
-  tools/          HTTP and built-in OTP tools
+  functions/      AWS Lambda composition/entrypoints
+  storage/        AWS DynamoDB adapter
+  tools/          provider-neutral HTTP and built-in OTP tools
   scripts/        tenant seeding CLI
 infra/            AWS CDK stack
 docs/             architecture, workflows, security, deployment and operations
@@ -272,7 +277,7 @@ openapi.yaml      HTTP API contract
 
 This repository is both the deployable runtime and a small local configuration toolkit. Avoid adding a hosted control plane unless a real customer requirement justifies it. Git + JSON + CI provide configuration review/version history; the localhost admin is only an editing/publishing convenience.
 
-See [Roadmap](docs/ROADMAP.md) and [Production readiness](docs/PRODUCTION-READINESS.md).
+See [Portability](docs/PORTABILITY.md), [Testing](docs/TESTING.md), [Roadmap](docs/ROADMAP.md) and [Production readiness](docs/PRODUCTION-READINESS.md).
 
 ## License
 

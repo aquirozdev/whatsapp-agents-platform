@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentConfig, ConsentRecord, ConversationState, ToolExecutionResult } from "../src/core/types.js";
 import { WorkflowRuntime } from "../src/workflows/runtime.js";
-import type { PlatformStore } from "../src/storage/dynamo.js";
+import type { PlatformStorePort } from "../src/ports/store.js";
 import type { ToolRegistry } from "../src/core/tool-registry.js";
 
 class FakeStore {
@@ -97,7 +97,7 @@ describe("WorkflowRuntime", () => {
   it("runs consent, identity, external OTP, selection and deterministic rendering without an LLM", async () => {
     const store = new FakeStore();
     const tools = new FakeTools();
-    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStorePort, tools as unknown as ToolRegistry);
     const conversation = state();
 
     expect((await runtime.start(tenant, conversation, "balance", "m1")).text).toContain("¿Acepta?");
@@ -120,7 +120,7 @@ describe("WorkflowRuntime", () => {
   it("does not reuse an OTP session verified for another subject", async () => {
     const store = new FakeStore();
     const tools = new FakeTools();
-    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStorePort, tools as unknown as ToolRegistry);
     const conversation = state();
     conversation.verification = {
       level: "otp",
@@ -139,7 +139,7 @@ describe("WorkflowRuntime", () => {
   it("reuses an active OTP session only for the same subject", async () => {
     const store = new FakeStore();
     const tools = new FakeTools();
-    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStorePort, tools as unknown as ToolRegistry);
     const conversation = state();
     conversation.verification = {
       level: "otp",
@@ -158,7 +158,7 @@ describe("WorkflowRuntime", () => {
   it("persists consent for future workflow runs", async () => {
     const store = new FakeStore();
     const tools = new FakeTools();
-    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStorePort, tools as unknown as ToolRegistry);
     const first = state();
 
     await runtime.start(tenant, first, "balance", "m1");

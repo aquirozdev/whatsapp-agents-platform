@@ -10,7 +10,7 @@ Implemented in the platform core:
 
 - official Meta WhatsApp Cloud API webhook and outbound messaging;
 - multi-tenant tenant resolution by Meta `phone_number_id`;
-- Bedrock Converse with client-side tool execution;
+- provider-neutral model orchestration with Bedrock Converse as the first production adapter;
 - deterministic transactional workflows outside the LLM;
 - runtime JSON Schema validation for every tool input;
 - workflow-only tool exposure for sensitive integrations;
@@ -22,7 +22,7 @@ Implemented in the platform core:
 - idempotency header propagation for side effects;
 - SQS FIFO ordering and DLQ;
 - DynamoDB PITR;
-- event deduplication after successful processing;
+- atomic conversation + processed-event commit, durable inbound deduplication and outbound replay without re-running transactional logic;
 - Secrets Manager;
 - human handoff state;
 - API Gateway access logs, detailed metrics and stage throttling;
@@ -96,7 +96,7 @@ Do not increase Lambda timeout and assume the HTTP client can wait longer than A
 
 The WhatsApp path is serialized per tenant + user through the FIFO message group.
 
-The synchronous Web/API path does not pass through SQS. Callers must serialize requests for the same `conversationId` in v1; simultaneous writes to the same conversation can otherwise race and the last persisted state can win. If a web/mobile client needs concurrent or bursty turns on the same conversation, route those turns through an asynchronous ordered path before production.
+The synchronous Web/API path does not pass through SQS, so the worker acquires a short per-conversation lease before executing a turn and conversation persistence also uses optimistic revisions. A competing synchronous turn receives HTTP 409 with `retryable: true` instead of racing through model/tool execution. High-volume clients can still choose an asynchronous ordered ingress when that fits their UX better.
 
 ## WAF and edge controls
 
@@ -111,7 +111,7 @@ Do not silently replace the default edge for every tenant; keep this an explicit
 
 ## IAM and secrets
 
-The shared generic runtime currently needs broad permissions for resources that are configured after deployment, especially tenant Secrets Manager ARNs and selectable Bedrock models.
+The shared AWS adapter currently needs broad permissions for resources that are bound after deployment, especially tenant secret resources and selectable Bedrock models.
 
 For a dedicated regulated deployment:
 

@@ -16,6 +16,10 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   else if (config.displayName.length > 120) issues.push({ path: "displayName", message: "displayName must be at most 120 characters." });
   if (!config.systemPrompt?.trim()) issues.push({ path: "systemPrompt", message: "systemPrompt is required." });
   else if (config.systemPrompt.length > 20000) issues.push({ path: "systemPrompt", message: "systemPrompt must be at most 20000 characters." });
+  if (config.model) {
+    if (!config.model.provider?.trim()) issues.push({ path: "model.provider", message: "model.provider is required when model is configured." });
+    if (!config.model.model?.trim()) issues.push({ path: "model.model", message: "model.model is required when model is configured." });
+  }
 
   const configBytes = Buffer.byteLength(JSON.stringify(config), "utf8");
   if (configBytes > MAX_CONFIG_BYTES) {
@@ -77,8 +81,10 @@ function validateWhatsApp(config: AgentConfig, issues: ConfigIssue[]): void {
   if (!/^v\d+\.\d+$/.test(whatsapp.graphApiVersion)) {
     issues.push({ path: "whatsapp.graphApiVersion", message: "graphApiVersion must look like v23.0." });
   }
-  if (!whatsapp.accessTokenSecretArn?.trim()) {
-    issues.push({ path: "whatsapp.accessTokenSecretArn", message: "WhatsApp access token secret ARN is required." });
+  const portableSecret = whatsapp.accessTokenSecret?.key?.trim();
+  const legacySecret = whatsapp.accessTokenSecretArn?.trim();
+  if (!portableSecret && !legacySecret) {
+    issues.push({ path: "whatsapp.accessTokenSecret", message: "WhatsApp access token secret reference is required." });
   }
   if (whatsapp.sendTimeoutMs !== undefined && (whatsapp.sendTimeoutMs < 1000 || whatsapp.sendTimeoutMs > 30000)) {
     issues.push({ path: "whatsapp.sendTimeoutMs", message: "sendTimeoutMs must be between 1000 and 30000 milliseconds." });
@@ -127,6 +133,10 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
   }
   if (http.maxResponseBytes !== undefined && (http.maxResponseBytes <= 0 || http.maxResponseBytes > 5 * 1024 * 1024)) {
     issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero and at most 5 MiB." });
+  }
+  for (const [header, ref] of Object.entries(http.secretHeaders ?? {})) {
+    const key = typeof ref === "string" ? ref.trim() : ref?.key?.trim();
+    if (!key) issues.push({ path: `${path}.http.secretHeaders.${header}`, message: "Secret header reference must be a non-empty string or { key }." });
   }
 }
 

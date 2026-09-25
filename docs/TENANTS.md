@@ -18,12 +18,12 @@ A tenant represents one customer configuration, not an end-user and not a source
 
 ```json
 {
-  "modelId": "region-appropriate-bedrock-model-or-inference-profile",
+  "model": { "provider": "bedrock", "model": "region-appropriate-model-or-inference-profile" },
   "maxToolRounds": 6
 }
 ```
 
-If `modelId` is empty, the stack-level `defaultModelId` is used.
+If `model` is omitted, the deployment-level default model is used. Legacy `modelId` is interpreted as a Bedrock model during migration.
 
 ## WhatsApp
 
@@ -31,7 +31,7 @@ If `modelId` is empty, the stack-level `defaultModelId` is used.
 {
   "whatsapp": {
     "phoneNumberId": "123456789",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:...",
+    "accessTokenSecret": { "key": "whatsapp.access-token" },
     "graphApiVersion": "CURRENT_SUPPORTED_VERSION"
   }
 }
@@ -49,7 +49,7 @@ Important tenant-level properties include:
 - `requiresVerification`,
 - `requiresConsents`,
 - HTTP endpoint/template,
-- Secrets Manager header references,
+- logical secret references resolved by the deployment adapter,
 - timeout,
 - idempotency header.
 
@@ -115,7 +115,7 @@ Do not put the plaintext key inside tenant JSON.
 
 ## Validation
 
-Before writing to DynamoDB, the seed CLI validates:
+Before publishing, the seed CLI validates the portable spec. Each successful publish creates an immutable config version (`CONFIG#vN`) and advances the active config atomically. Before writing to DynamoDB, it validates:
 
 - required tenant fields and safe tenant ID format;
 - maximum config/prompt sizes to stay below runtime storage limits,
