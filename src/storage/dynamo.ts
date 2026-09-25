@@ -9,7 +9,7 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
+import type { AgentConfig, ChannelDeliveryReceipt, ChannelDeliveryStatus, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
 import type { PlatformStorePort } from "../ports/store.js";
 import { ConversationConflictError } from "../ports/store.js";
 import { awsClientOptions } from "../adapters/aws/client-options.js";
@@ -333,6 +333,56 @@ export class PlatformStore implements PlatformStorePort {
       ConditionExpression: "attribute_exists(pk)",
       ExpressionAttributeValues: { ":deliveredAt": deliveredAt },
     }));
+  }
+
+  async recordOutboundReceipt(externalMessageId: string, receipt: ChannelDeliveryReceipt): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET event.deliveries = list_append(if_not_exists(event.deliveries, :empty), :receipts)",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":empty": [], ":receipts": [receipt] },
+    }));
+    if (receipt.providerMessageId) {
+      await this.client.send(new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          pk: `DELIVERY#${receipt.providerMessageId}`,
+          sk: "DELIVERY",
+          entity: "delivery_index",
+          externalMessageId,
+          receipt,
+          ttl: now + 7 * 86400,
+        },
+      }));
+    }
+  }
+
+  async updateOutboundStatus(status: ChannelDeliveryStatus): Promise<void> {
+    const index = await this.client.send(new GetCommand({
+      TableName: this.tableName,
+      Key: { pk: `DELIVERY#${status.providerMessageId}`, sk: "DELIVERY" },
+    }));
+    const externalMessageId = index.Item?.externalMessageId as string | undefined;
+    if (!externalMessageId) return;
+
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `DELIVERY#${status.providerMessageId}`, sk: "DELIVERY" },
+      UpdateExpression: "SET #receipt.#status = :status, #receipt.occurredAt = :occurredAt, #receipt.errorCode = :errorCode, #receipt.errorMessage = :errorMessage",
+      ExpressionAttributeNames: { "#receipt": "receipt", "#status": "status" },
+      ExpressionAttributeValues: {
+        ":status": status.status,
+        ":occurredAt": status.occurredAt,
+        ":errorCode": status.errorCode ?? null,
+        ":errorMessage": status.errorMessage ?? null,
+      },
+    }));
+
+    if (status.status === "delivered" || status.status === "read") {
+      await this.markEventDelivered(externalMessageId, status.occurredAt);
+    }
   }
 
   async claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean> {
