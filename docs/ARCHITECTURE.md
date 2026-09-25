@@ -30,6 +30,7 @@ Business semantics live in `core`, `workflows`, `tools` and `ports`. Those layer
 | `TurnDispatcher` | SQS FIFO | at-least-once delivery + per-conversation serialization |
 | `SecretProvider` | Secrets Manager | logical secret resolution |
 | `OtpDeliveryPort` | SNS / SES | delivery only; verification rules stay in the runtime |
+| `ObservabilityPort` | CloudWatch EMF / structured logs | low-cardinality metrics + portable spans/events |
 
 A future cloud adapter may use different managed services as long as it preserves these semantics.
 
@@ -167,7 +168,9 @@ HTTP tools support bounded timeouts, Secrets Manager headers and an optional ide
 | `TENANT#<tenantId>#CONV#<channel>#<conversationId>` | `LEASE` | Short lease for synchronous turn serialization |
 | `TENANT#<tenantId>#SUBJECT#<subjectId>` | `CONSENT#<policyId>#<version>` | Durable consent |
 | `TENANT#<tenantId>#OTP#<challengeId>` | `CHALLENGE` | Built-in OTP challenge |
-| `EVENT#<externalMessageId>` | `EVENT` | Successfully processed event |
+| `EVENT#<externalMessageId>` | `EVENT` | Processed event, durable outbound, receipts and latest delivery status |
+| `DELIVERY#<providerMessageId>` | `DELIVERY` | Short-lived delivery reconciliation index |
+| `TENANT#<tenantId>#TOOL_RATE#...` | `WINDOW#...` | Distributed per-tool quota window |
 | `TENANT#<tenantId>#AUDIT#YYYY-MM-DD` | `<timestamp>#<uuid>` | Audit event |
 
 GSI1 maps WhatsApp phone numbers:
@@ -219,3 +222,9 @@ The current boundaries support later addition of:
 Cloud portability is implemented at semantic boundaries, not by pretending every cloud has equivalent products. For example, AWS uses SQS FIFO for per-conversation ordering; another deployment may implement the same `TurnDispatcher` serialization guarantee with a different primitive.
 
 See [PORTABILITY.md](PORTABILITY.md) and [TESTING.md](TESTING.md).
+
+## Operational contracts
+
+Channel delivery is two-phase: the runtime first commits conversation state plus durable outbound, then the channel returns an acceptance receipt. Provider delivery webhooks update the durable status independently. Replays skip outbound entries that already have persisted acceptance receipts, reducing duplicates without introducing a separate outbox service.
+
+Observability follows the same ports-and-adapters rule as storage/models. The core emits portable metrics/spans; the AWS adapter serializes them as CloudWatch Embedded Metric Format and structured JSON. Metric dimensions stay deliberately low-cardinality.
