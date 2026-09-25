@@ -96,6 +96,27 @@ describe.skipIf(!enabled)("Floci AWS adapter integration", () => {
     expect(await store.acquireConversationLease("tenant-a", "web", "c1", "owner-2", 30)).toBe(true);
   });
 
+  it("commits conversation state and durable outbound atomically", async () => {
+    const store = new PlatformStore(tableName);
+    const state = await store.getConversation("tenant-a", "whatsapp", "c-outbox", "u-outbox");
+    await store.commitTurn(state, 0, {
+      externalMessageId: "wamid.atomic",
+      tenantId: "tenant-a",
+      channel: "whatsapp",
+      configVersion: 2,
+      outbound: [{ kind: "text", text: "respuesta durable" }],
+      processedAt: new Date().toISOString(),
+    });
+
+    expect(state.revision).toBe(1);
+    const event = await store.getProcessedEvent("wamid.atomic");
+    expect(event?.outbound).toEqual([{ kind: "text", text: "respuesta durable" }]);
+    expect(event?.deliveredAt).toBeUndefined();
+
+    await store.markEventDelivered("wamid.atomic", "2026-01-01T00:00:00.000Z");
+    expect((await store.getProcessedEvent("wamid.atomic"))?.deliveredAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
   it("resolves secrets and dispatches FIFO turns through AWS-shaped adapters", async () => {
     const secretProvider = new AwsSecretsManagerProvider();
     expect(await secretProvider.get({ key: secretName })).toBe("secret-value");
