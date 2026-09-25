@@ -16,6 +16,7 @@ import { ConversationBusyError, ConversationConflictError } from "../ports/store
 import { AwsSecretsManagerProvider } from "../adapters/aws/secrets-manager.js";
 import { AwsOtpDeliveryProvider } from "../adapters/aws/otp-delivery.js";
 import { BedrockModelProvider } from "../adapters/aws/bedrock-model.js";
+import { OpenAICompatibleModelProvider } from "../adapters/openai-compatible-model.js";
 
 const store = new PlatformStore();
 const secrets = new AwsSecretsManagerProvider();
@@ -28,7 +29,7 @@ const toolExecutors = new ToolExecutorRegistry([
 ]);
 const tools = new ToolRegistry(store, toolExecutors);
 const workflows = new WorkflowRuntime(store, tools);
-const models = new ModelProviderRegistry([new BedrockModelProvider()]);
+const models = new ModelProviderRegistry([new BedrockModelProvider(), new OpenAICompatibleModelProvider(secrets)]);
 const defaultModel: ModelConfig | undefined = process.env.DEFAULT_MODEL_ID
   ? { provider: process.env.DEFAULT_MODEL_PROVIDER ?? "bedrock", model: process.env.DEFAULT_MODEL_ID }
   : undefined;
