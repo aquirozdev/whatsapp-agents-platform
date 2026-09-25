@@ -318,6 +318,7 @@ export interface EventRecord {
   tenantId: string;
   channel: ChannelKind;
   conversationId: string;
+  configVersion?: string;
   status: "prepared" | "completed";
   outbound: OutboundMessage[];
   createdAt: string;
