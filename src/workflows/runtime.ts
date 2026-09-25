@@ -124,17 +124,16 @@ export class WorkflowRuntime {
       const verified = step.successPath ? Boolean(getPath(result.data, step.successPath)) : true;
       if (!verified) return this.textResult(step.invalidMessage ?? "El código ingresado no es válido.");
       const now = Math.floor(Date.now() / 1000);
-      const rawSubject = step.subjectFrom ? getPath(workflow.data, step.subjectFrom) : state.userId;
-      if (rawSubject === undefined || rawSubject === null || String(rawSubject).trim() === "") {
+      const subjectId = this.verificationSubject(step.subjectFrom, workflow.data, state.userId);
+      if (!subjectId) {
         workflow.status = "cancelled"; workflow.awaiting = undefined; this.clearTerminalData(definition, workflow);
-        if (!definition.retainDataOnCompletion) workflow.data = {};
         return this.textResult(step.terminalMessage ?? "No se pudo vincular la verificación a una identidad.");
       }
       state.verification = {
         level: "otp",
         verifiedAt: new Date().toISOString(),
         expiresAt: now + (step.sessionTtlSeconds ?? tenant.otp?.sessionTtlSeconds ?? 900),
-        subjectId: String(rawSubject),
+        subjectId,
       };
       this.next(workflow);
       await this.store.audit(tenant.tenantId, "workflow.verification_succeeded", { workflowId: workflow.workflowId, stepId: step.id, userId: state.userId });
@@ -199,7 +198,17 @@ export class WorkflowRuntime {
 
       if (step.type === "verification") {
         const now = Math.floor(Date.now() / 1000);
-        if (step.skipIfVerified !== false && state.verification.level === "otp" && (state.verification.expiresAt ?? 0) > now) { this.next(workflow); continue; }
+        const expectedSubject = this.verificationSubject(step.subjectFrom, workflow.data, state.userId);
+        if (!expectedSubject) {
+          workflow.status = "cancelled"; workflow.awaiting = undefined; this.clearTerminalData(definition, workflow);
+          outbound.push({ kind: "text", text: step.terminalMessage ?? "No se pudo vincular la verificación a una identidad." });
+          return this.result(outbound, toolCalls);
+        }
+        const verificationIsActive =
+          state.verification.level === "otp" &&
+          (state.verification.expiresAt ?? 0) > now &&
+          state.verification.subjectId === expectedSubject;
+        if (step.skipIfVerified !== false && verificationIsActive) { this.next(workflow); continue; }
         const toolContext: ToolContext = { tenant, state, externalMessageId };
         const startInput = (renderValue(step.startInput ?? {}, this.context(workflow.data, state)) ?? {}) as Record<string, unknown>;
         const result = await this.tools.executeByName(tenant, step.startTool, toolContext, startInput, "workflow");
@@ -312,6 +321,12 @@ export class WorkflowRuntime {
   }
 
   private consentPrompt(prompt: string, documentUrl?: string): string { return documentUrl ? `${prompt}\n${documentUrl}` : prompt; }
+  private verificationSubject(path: string | undefined, data: Record<string, unknown>, fallback: string): string | undefined {
+    if (!path) return fallback;
+    const resolved = getPath(data, path);
+    if (resolved === undefined || resolved === null || String(resolved).trim() === "") return undefined;
+    return String(resolved);
+  }
   private consentSubject(path: string | undefined, data: Record<string, unknown>, fallback: string): string {
     if (!path) return fallback;
     const resolved = getPath(data, path);
