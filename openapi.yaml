@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: WhatsApp Agents Platform API
+  version: 0.2.0
+servers:
+  - url: https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: Service health
+  /webhooks/whatsapp:
+    get:
+      summary: Meta webhook verification
+      responses:
+        "200":
+          description: Verification challenge
+    post:
+      summary: Meta WhatsApp webhook receiver
+      responses:
+        "200":
+          description: Event accepted
+  /v1/chat:
+    post:
+      summary: Synchronous web/API chat using the same agent/workflow runtime as WhatsApp
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: x-api-key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, message]
+              properties:
+                userId: { type: string }
+                conversationId: { type: string }
+                message: { type: string }
+      responses:
+        "200":
+          description: Agent or deterministic workflow response
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reply, messages, conversationId]
+                properties:
+                  reply:
+                    type: string
+                  conversationId:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      oneOf:
+                        - type: object
+                          required: [kind, text]
+                          properties:
+                            kind: { const: text }
+                            text: { type: string }
+                        - type: object
+                          required: [kind, url]
+                          properties:
+                            kind: { const: document }
+                            url: { type: string, format: uri }
+                            filename: { type: string }
+                            caption: { type: string }
+                  workflow:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      status:
+                        type: string
+                        enum: [active, completed, cancelled, expired]
+        "401":
+          description: Unauthorized
+  /v1/conversations/{channel}/{conversationId}/mode:
+    post:
+      summary: Put a conversation in AI or human mode
+      parameters:
+        - in: path
+          name: channel
+          required: true
+          schema: { type: string, enum: [whatsapp, web] }
+        - in: path
+          name: conversationId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: x-api-key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [ai, human] }
+      responses:
+        "200":
+          description: Mode changed

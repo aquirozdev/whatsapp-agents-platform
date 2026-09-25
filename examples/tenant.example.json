@@ -1,0 +1,81 @@
+{
+  "tenantId": "cooperativa-demo",
+  "displayName": "Cooperativa Demo",
+  "enabled": true,
+  "systemPrompt": "Eres el asistente virtual de Cooperativa Demo. Responde de forma clara y breve. Nunca inventes datos. Usa las herramientas cuando necesites información del sistema. Si una herramienta devuelve VERIFICATION_REQUIRED, solicita verificación OTP y no reveles información sensible hasta que la verificación sea válida. Si el usuario pide un asesor, usa human_handoff.",
+  "modelId": "",
+  "maxToolRounds": 6,
+  "whatsapp": {
+    "phoneNumberId": "REPLACE_ME",
+    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/cooperativa-demo/whatsapp-token",
+    "graphApiVersion": "vXX.X"
+  },
+  "otp": {
+    "enabled": true,
+    "codeTtlSeconds": 300,
+    "sessionTtlSeconds": 900,
+    "maxAttempts": 5,
+    "allowedChannels": ["sms", "email"]
+  },
+  "tools": [
+    {
+      "name": "request_verification",
+      "kind": "builtin",
+      "description": "Send an OTP verification code by SMS or email. Ask the user which allowed destination to use before calling it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "enum": ["sms", "email"] },
+          "destination": { "type": "string" }
+        },
+        "required": ["channel", "destination"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "verify_code",
+      "kind": "builtin",
+      "description": "Verify an OTP challenge. Use the challengeId returned by request_verification and the code supplied by the user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "challengeId": { "type": "string" },
+          "code": { "type": "string" }
+        },
+        "required": ["challengeId", "code"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "human_handoff",
+      "kind": "builtin",
+      "description": "Transfer the conversation to a human agent when explicitly requested or when automation cannot safely continue.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "reason": { "type": "string" } },
+        "required": ["reason"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_account_balance",
+      "kind": "http",
+      "description": "Get the verified customer's account balance from the core banking API.",
+      "requiresVerification": "otp",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "accountId": { "type": "string" } },
+        "required": ["accountId"],
+        "additionalProperties": false
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://api.example.com/accounts/balance",
+        "headers": { "X-Client": "whatsapp-agent" },
+        "secretHeaders": { "Authorization": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/cooperativa-demo/core-api-auth" },
+        "bodyTemplate": { "accountId": "{{accountId}}" },
+        "timeoutMs": 8000
+      }
+    }
+  ]
+}
