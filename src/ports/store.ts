@@ -1,4 +1,4 @@
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge } from "../core/types.js";
+import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
 
 export class ConversationConflictError extends Error {
   constructor() {
@@ -22,12 +22,15 @@ export interface PlatformStorePort {
 
   getConversation(tenantId: string, channel: string, conversationId: string, userId: string): Promise<ConversationState>;
   saveConversation(state: ConversationState, expectedRevision?: number): Promise<void>;
+  commitTurn(state: ConversationState, expectedRevision: number, event: ProcessedEventRecord): Promise<void>;
   setConversationMode(tenantId: string, channel: string, conversationId: string, mode: "ai" | "human"): Promise<void>;
   acquireConversationLease(tenantId: string, channel: string, conversationId: string, owner: string, leaseSeconds?: number): Promise<boolean>;
   releaseConversationLease(tenantId: string, channel: string, conversationId: string, owner: string): Promise<void>;
 
+  getProcessedEvent(externalMessageId: string): Promise<ProcessedEventRecord | undefined>;
   isEventProcessed(externalMessageId: string): Promise<boolean>;
   markEventProcessed(externalMessageId: string, ttlSeconds?: number): Promise<void>;
+  markEventDelivered(externalMessageId: string, deliveredAt?: string): Promise<void>;
 
   claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean>;
   putOtpChallenge(challenge: OtpChallenge): Promise<void>;
