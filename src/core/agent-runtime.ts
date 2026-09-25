@@ -4,9 +4,11 @@ import { ModelProviderRegistry } from "../ports/model.js";
 import type { PlatformStorePort } from "../ports/store.js";
 import { ToolRegistry } from "./tool-registry.js";
 import { WorkflowRuntime } from "../workflows/runtime.js";
+import { noopObservability, observe, type ObservabilityPort } from "../ports/observability.js";
 
 export interface AgentRuntimeOptions {
   defaultModel?: ModelConfig;
+  observability?: ObservabilityPort;
 }
 
 export class AgentRuntime {
@@ -19,6 +21,8 @@ export class AgentRuntime {
   ) {}
 
   async execute(tenant: AgentConfig, inbound: InboundEnvelope): Promise<AgentRunResult> {
+    const observability = this.options.observability ?? noopObservability;
+    const turnStarted = Date.now();
     const state = await this.store.getConversation(tenant.tenantId, inbound.channel, inbound.conversationId, inbound.userId);
     const expectedRevision = state.revision ?? 0;
 
@@ -79,6 +83,11 @@ export class AgentRuntime {
       conversationRevision: state.revision,
     });
 
+    observability.metric({ name: "TurnLatency", value: Date.now() - turnStarted, unit: "Milliseconds", dimensions: { Channel: inbound.channel } });
+    observability.metric({ name: "TurnProcessed", value: 1, dimensions: { Channel: inbound.channel } });
+    if (result.toolCalls.includes("start_workflow")) observability.metric({ name: "WorkflowStarted", value: 1, dimensions: { Channel: inbound.channel } });
+    if (state.workflow?.status === "completed") observability.metric({ name: "WorkflowCompleted", value: 1, dimensions: { Channel: inbound.channel } });
+    if (state.workflow?.status === "cancelled" || state.workflow?.status === "expired") observability.metric({ name: "WorkflowAbandoned", value: 1, dimensions: { Channel: inbound.channel } });
     return { text: result.text, outbound: result.outbound, state, toolCalls: result.toolCalls };
   }
 
@@ -145,14 +154,22 @@ export class AgentRuntime {
     const ctx: ToolContext = { tenant, state, externalMessageId };
 
     for (let round = 0; round <= maxRounds; round += 1) {
-      const response = await provider.generate({
+      const modelStarted = Date.now();
+      const response = await observe(this.options.observability ?? noopObservability, "gen_ai.generate", {
+        "gen_ai.provider.name": provider.id,
+        "gen_ai.request.model": model.model,
+      }, () => provider.generate({
         model,
         system: tenant.systemPrompt + workflowInstruction,
         messages,
         tools: toolDefinitions,
         maxTokens: 1200,
         temperature: 0.2,
-      });
+      }));
+      const observability = this.options.observability ?? noopObservability;
+      observability.metric({ name: "ModelLatency", value: Date.now() - modelStarted, unit: "Milliseconds", dimensions: { Provider: provider.id } });
+      if (response.usage?.inputTokens !== undefined) observability.metric({ name: "ModelInputTokens", value: response.usage.inputTokens, unit: "Count", dimensions: { Provider: provider.id } });
+      if (response.usage?.outputTokens !== undefined) observability.metric({ name: "ModelOutputTokens", value: response.usage.outputTokens, unit: "Count", dimensions: { Provider: provider.id } });
       messages.push(response.message);
 
       if (response.toolCalls.length === 0) {
