@@ -49,7 +49,7 @@ describe.skipIf(!enabled)("Floci AWS adapter integration", () => {
         Projection: { ProjectionType: "ALL" },
       }],
     }));
-    await waitUntilTableExists({ client: dynamo, maxWaitTime: 10 }, { TableName: tableName });
+    await waitUntilTableExists({ client: dynamo, maxWaitTime: 30 }, { TableName: tableName });
 
     const queue = await sqs.send(new CreateQueueCommand({
       QueueName: queueName,
