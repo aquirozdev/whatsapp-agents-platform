@@ -59,6 +59,14 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
     if (tool.verificationSubjectFrom && (tool.requiresVerification ?? "none") === "none") {
       issues.push({ path: `${path}.verificationSubjectFrom`, message: "verificationSubjectFrom requires requiresVerification." });
     }
+    if (tool.rateLimit) {
+      if (!Number.isInteger(tool.rateLimit.maxCalls) || tool.rateLimit.maxCalls < 1 || tool.rateLimit.maxCalls > 100000) {
+        issues.push({ path: `${path}.rateLimit.maxCalls`, message: "maxCalls must be an integer between 1 and 100000." });
+      }
+      if (!Number.isInteger(tool.rateLimit.windowSeconds) || tool.rateLimit.windowSeconds < 1 || tool.rateLimit.windowSeconds > 86400) {
+        issues.push({ path: `${path}.rateLimit.windowSeconds`, message: "windowSeconds must be an integer between 1 and 86400." });
+      }
+    }
     if (tool.kind === "http") {
       if (!tool.http) issues.push({ path: `${path}.http`, message: "HTTP tools require http configuration." });
       else validateHttp(tool, path, issues);
