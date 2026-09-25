@@ -1,14 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, SQSBatchResponse, SQSEvent } from "aws-lambda";
-import { AgentRuntime } from "../core/agent-runtime.js";
 import type { AgentRunResult, InboundEnvelope } from "../core/types.js";
 import { sha256, safeEqualHex } from "../core/security.js";
-import { PlatformStore } from "../storage/dynamo.js";
-import { sendWhatsAppOutbound } from "../channels/whatsapp.js";
+import { ConversationConflictError } from "../storage/dynamo.js";
+import { composeAwsRuntime } from "../composition/aws.js";
 import { log } from "../core/logger.js";
 
-const store = new PlatformStore();
-const runtime = new AgentRuntime(store);
+const { store, runtime, whatsapp } = composeAwsRuntime();
 
 const MAX_WEB_MESSAGE_CHARS = 8000;
 const MAX_WEB_ID_CHARS = 256;
@@ -43,13 +41,7 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
 
   const result = await runtime.execute(tenant, inbound);
 
-  if (sendReply && inbound.replyTo) {
-    const recipient = {
-      value: inbound.replyTo,
-      type: inbound.replyToType ?? "phone",
-    } as const;
-    for (const message of result.outbound) await sendWhatsAppOutbound(tenant, recipient, message);
-  }
+  if (sendReply) await whatsapp.send(tenant, inbound, result.outbound);
 
   await store.markEventProcessed(inbound.externalMessageId);
   return result;
@@ -81,7 +73,11 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
 
   if (method === "POST" && path === "/v1/chat") {
     let body: Record<string, unknown>;
-    try { body = JSON.parse(apiBody(event) || "{}") as Record<string, unknown>; } catch { return json(400, { error: "invalid_json" }); }
+    try {
+      body = JSON.parse(apiBody(event) || "{}") as Record<string, unknown>;
+    } catch {
+      return json(400, { error: "invalid_json" });
+    }
 
     const userId = typeof body.userId === "string" ? body.userId.trim() : "";
     const message = typeof body.message === "string" ? body.message : "";
@@ -106,25 +102,37 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
       receivedAt: new Date().toISOString(),
     };
 
-    const result = await processInbound(inbound, false);
-    return json(200, {
-      reply: result?.text ?? "",
-      messages: result?.outbound ?? [],
-      conversationId,
-      workflow: result?.state.workflow ? {
-        id: result.state.workflow.workflowId,
-        status: result.state.workflow.status,
-      } : undefined,
-    });
+    try {
+      const result = await processInbound(inbound, false);
+      return json(200, {
+        reply: result?.text ?? "",
+        messages: result?.outbound ?? [],
+        conversationId,
+        workflow: result?.state.workflow ? {
+          id: result.state.workflow.workflowId,
+          status: result.state.workflow.status,
+          configVersion: result.state.workflow.configVersion,
+        } : undefined,
+      });
+    } catch (error) {
+      if (error instanceof ConversationConflictError) {
+        return json(409, { error: "conversation_conflict", retryable: true });
+      }
+      throw error;
+    }
   }
 
-  const modeMatch = path.match(/^\/v1\/conversations\/(whatsapp|web)\/([^/]+)\/mode$/);
+  const modeMatch = path.match(/^\/v1\/conversations\/([^/]+)\/([^/]+)\/mode$/);
   if (method === "POST" && modeMatch) {
     let body: { mode?: "ai" | "human" };
-    try { body = JSON.parse(apiBody(event) || "{}") as { mode?: "ai" | "human" }; } catch { return json(400, { error: "invalid_json" }); }
+    try {
+      body = JSON.parse(apiBody(event) || "{}") as { mode?: "ai" | "human" };
+    } catch {
+      return json(400, { error: "invalid_json" });
+    }
     if (body.mode !== "ai" && body.mode !== "human") return json(400, { error: "mode_must_be_ai_or_human" });
 
-    const channel = modeMatch[1]!;
+    const channel = decodeURIComponent(modeMatch[1]!);
     const conversationId = decodeURIComponent(modeMatch[2]!);
     await store.setConversationMode(tenant.tenantId, channel, conversationId, body.mode);
     await store.audit(tenant.tenantId, "conversation.mode_changed", { channel, conversationId, mode: body.mode });
@@ -134,6 +142,8 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
   return json(404, { error: "not_found" });
 }
 
-export async function handler(event: SQSEvent | APIGatewayProxyEventV2): Promise<SQSBatchResponse | APIGatewayProxyResultV2> {
+export async function handler(
+  event: SQSEvent | APIGatewayProxyEventV2,
+): Promise<SQSBatchResponse | APIGatewayProxyResultV2> {
   return isSqsEvent(event) ? handleSqs(event) : handleApi(event);
 }
