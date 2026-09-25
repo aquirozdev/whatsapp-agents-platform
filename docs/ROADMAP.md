@@ -1,78 +1,77 @@
 # Product roadmap
 
-The core should remain small. Add product layers when they improve onboarding, operations or a real enterprise requirement.
+The default rule is **keep the platform small**. Add a service only when a real customer requirement cannot be handled cleanly by JSON, an adapter or the existing two-Lambda runtime.
 
-## Phase 1 — platform core
+## Core — implemented
 
-Implemented:
-
-- WhatsApp Cloud API
+- official WhatsApp Cloud API
 - Web/API chat
 - Bedrock Converse
 - multi-tenancy
+- deterministic transactional workflows
 - agent/workflow tool exposure
-- deterministic workflow runtime
-- consent
-- built-in or customer-owned OTP
-- generic HTTP tools
+- JSON Schema validation for tool inputs
+- consent and identity-bound OTP
+- customer-owned or built-in OTP
+- generic HTTP integrations
 - confirmation/selection/branching/rendering/document delivery
-- handoff primitive
+- human handoff primitive
 - audit/state
+- SQS FIFO + DLQ
+- DynamoDB + PITR
+- Secrets Manager
 - serverless CDK
-- API access logs, detailed metrics and stage throttling
-- runtime JSON-schema validation for tool inputs
-- built-in OTP request cooldown
-- config validation and CI
+- API access logs, metrics and throttling
+- CI and tenant validation
+- reusable JSON templates
+- localhost-only JSON admin/publisher
 
-## Phase 2 — operator product
+## Configuration model
 
-- Next.js admin portal
-- OIDC/Cognito
-- RBAC: platform admin / tenant admin / operator / auditor
-- tenant editor
-- tool editor
-- workflow editor
-- capability toggles
-- secret onboarding flow
-- conversation/handoff inbox
-- audit viewer
-- config versioning + publish + rollback
+Do not build a hosted admin platform by default.
 
-The portal should remain a control plane. Runtime policy enforcement stays in backend TypeScript.
+Preferred operating model:
 
-## Phase 3 — knowledge and integration catalog
+```text
+template
+   ↓
+tenant.json
+   ↓
+local validator/admin
+   ↓
+Git / CI (when desired)
+   ↓
+publish to DynamoDB
+   ↓
+same runtime
+```
 
-- `search_knowledge` tool
-- Bedrock Knowledge Bases or pluggable KnowledgeProvider
-- file ingestion
-- REST/SOAP/GraphQL connector templates
-- selected MCP adapters
-- CRM/core-banking/insurance templates
-- richer response adapters
-- interactive WhatsApp list/button rendering
+Git is enough for configuration history and review for many deployments. Customer secrets stay in Secrets Manager, never in JSON.
 
-## Phase 4 — enterprise profile
+## Next improvements that preserve simplicity
+
+Prioritize these when a concrete integration needs them:
+
+- more reusable connector templates (REST/SOAP/GraphQL)
+- richer WhatsApp outbound messages (templates, buttons, lists, media)
+- optional `search_knowledge` tool behind a small KnowledgeProvider interface
+- local conversation inspection/export tooling
+- deployment presets for shared vs dedicated AWS accounts
+- stronger per-tool scopes/rate limits
+- PII redaction hooks
+
+These are adapters/modules, not new always-on services.
+
+## Optional enterprise profiles
+
+Add only when contracted requirements demand them:
 
 - customer-managed KMS keys
-- dedicated-account deployment preset
-- VPC/private integration
+- VPC/private connectivity
 - immutable centralized audit export
-- WAF/edge hardening
-- OIDC federation/enterprise SSO
-- per-tool scopes/rate limits
-- PII redaction and retention
-- security/compliance evidence pack
+- WAF/REST API edge profile
+- OIDC/SSO for a hosted operator console
+- dedicated security/compliance evidence
+- durable long-running workflow engine
 
-## Phase 5 — durable long-running processes
-
-The built-in workflow engine is intentionally for conversational transactions lasting minutes.
-
-Use a durable external engine only when a process requires:
-
-- waits across hours/days,
-- external callbacks,
-- human approvals outside the chat session,
-- distributed compensation,
-- resumability independent of the conversation item.
-
-Possible adapters include Step Functions or Temporal behind the existing workflow/tool boundary.
+The built-in workflow engine remains for conversational transactions lasting minutes. Use Step Functions/Temporal only when a process truly requires multi-hour/day waits, callbacks, external approvals or distributed compensation.
