@@ -6,6 +6,7 @@ The platform is intentionally designed so that the LLM is **not** the authorizat
 
 ### Public edge
 
+- API Gateway HTTP API has configurable stage throttling and access logs.
 - Meta webhook verification uses a secret verify token.
 - Meta webhook POST requests are validated with `X-Hub-Signature-256` and the Meta App Secret.
 - REST requests require tenant ID + a high-entropy API key in v1.
@@ -45,7 +46,7 @@ A tool may declare:
 }
 ```
 
-The Tool Registry checks those requirements before any upstream HTTP request is sent. Prompt injection cannot remove these checks.
+The Tool Registry validates tool input against the configured JSON Schema and then checks verification/consent requirements before any upstream HTTP request is sent. Prompt injection cannot remove these checks.
 
 Workflows also enforce sequence, but tool-level checks remain as defense in depth.
 
@@ -82,6 +83,7 @@ Built-in OTP provides:
 - HMAC key in Secrets Manager;
 - short expiry;
 - maximum attempts;
+- an atomic per-user request cooldown (60 seconds by default);
 - challenge binding to tenant + user + conversation;
 - atomic one-time consumption;
 - short-lived verified conversation state;
