@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: WhatsApp Agents Platform API
-  version: 0.2.0
+  version: 0.3.0
 servers:
   - url: https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com
 paths:
@@ -76,6 +76,36 @@ paths:
                             url: { type: string, format: uri }
                             filename: { type: string }
                             caption: { type: string }
+                        - type: object
+                          required: [kind, url]
+                          properties:
+                            kind: { const: image }
+                            url: { type: string, format: uri }
+                            caption: { type: string }
+                        - type: object
+                          required: [kind, body]
+                          properties:
+                            kind: { const: interactive }
+                            body: { type: string }
+                            buttons:
+                              type: array
+                              maxItems: 3
+                              items:
+                                type: object
+                                required: [id, title]
+                                properties:
+                                  id: { type: string }
+                                  title: { type: string }
+                            list:
+                              type: object
+                        - type: object
+                          required: [kind, name, languageCode]
+                          properties:
+                            kind: { const: template }
+                            name: { type: string }
+                            languageCode: { type: string }
+                            components:
+                              type: array
                   workflow:
                     type: object
                     properties:
