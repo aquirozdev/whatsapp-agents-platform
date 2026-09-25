@@ -5,11 +5,11 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
-import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
+import { HttpApi, HttpMethod, HttpStage, LogGroupLogDestination } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 interface PlatformStackProps extends StackProps { stage: string }
 
@@ -111,7 +111,7 @@ export class PlatformStack extends Stack {
 
     const api = new HttpApi(this, "HttpApi", {
       apiName: `whatsapp-agents-${props.stage}`,
-      createDefaultStage: true,
+      createDefaultStage: false,
     });
 
     const ingressIntegration = new HttpLambdaIntegration("IngressIntegration", ingress);
@@ -121,6 +121,24 @@ export class PlatformStack extends Stack {
     const workerIntegration = new HttpLambdaIntegration("WorkerIntegration", worker);
     api.addRoutes({ path: "/v1/chat", methods: [HttpMethod.POST], integration: workerIntegration });
     api.addRoutes({ path: "/v1/conversations/{channel}/{conversationId}/mode", methods: [HttpMethod.POST], integration: workerIntegration });
+
+    const apiAccessLogs = new LogGroup(this, "ApiAccessLogs", {
+      retention: RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    new HttpStage(this, "DefaultStage", {
+      httpApi: api,
+      stageName: "$default",
+      autoDeploy: true,
+      detailedMetricsEnabled: true,
+      throttle: {
+        rateLimit: Number(this.node.tryGetContext("apiRateLimit") ?? 100),
+        burstLimit: Number(this.node.tryGetContext("apiBurstLimit") ?? 200),
+      },
+      accessLogSettings: {
+        destination: new LogGroupLogDestination(apiAccessLogs),
+      },
+    });
 
     new CfnOutput(this, "ApiUrl", { value: api.apiEndpoint });
     new CfnOutput(this, "TableName", { value: table.tableName });
