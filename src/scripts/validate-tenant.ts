@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { AgentConfig } from "../core/types.js";
 import { validateAgentConfig } from "../core/config-validation.js";
+import { migrateAgentConfig } from "../core/config-migrations.js";
 
 const file = process.argv[2];
 if (!file) {
@@ -8,7 +9,7 @@ if (!file) {
   process.exit(1);
 }
 
-const config = JSON.parse(await readFile(file, "utf8")) as AgentConfig;
+const config = migrateAgentConfig(JSON.parse(await readFile(file, "utf8")) as AgentConfig);
 const issues = validateAgentConfig(config);
 
 if (issues.length > 0) {
