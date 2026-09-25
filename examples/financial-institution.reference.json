@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "tenantId": "financial-institution-demo",
   "displayName": "Financial Institution Demo",
   "enabled": true,
@@ -15,24 +16,43 @@
     {
       "id": "identity",
       "name": "Customer identity",
-      "tools": ["resolve_customer"]
+      "tools": [
+        "resolve_customer"
+      ]
     },
     {
       "id": "verification",
       "name": "Institution-owned verification",
-      "tools": ["start_customer_otp", "verify_customer_otp"]
+      "tools": [
+        "start_customer_otp",
+        "verify_customer_otp"
+      ]
     },
     {
       "id": "financial-self-service",
       "name": "Balances, movements and credit",
-      "tools": ["list_products", "get_savings_balance", "get_movements", "get_credit_details"],
-      "workflows": ["account_balance"]
+      "tools": [
+        "list_products",
+        "get_savings_balance",
+        "get_movements",
+        "get_credit_details"
+      ],
+      "workflows": [
+        "account_balance"
+      ]
     },
     {
       "id": "documents",
       "name": "Document generation",
-      "tools": ["list_documents", "quote_document", "generate_document", "send_document_email"],
-      "workflows": ["bank_certificate"]
+      "tools": [
+        "list_documents",
+        "quote_document",
+        "generate_document",
+        "send_document_email"
+      ],
+      "workflows": [
+        "bank_certificate"
+      ]
     }
   ],
   "tools": [
@@ -43,15 +63,25 @@
       "description": "Resolve a customer from an identification value.",
       "inputSchema": {
         "type": "object",
-        "properties": { "identification": { "type": "string" } },
-        "required": ["identification"],
+        "properties": {
+          "identification": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identification"
+        ],
         "additionalProperties": false
       },
       "http": {
         "method": "POST",
         "url": "https://core.example.invalid/customers/resolve",
-        "allowedHosts": ["core.example.invalid"],
-        "bodyTemplate": { "identification": "{{identification}}" },
+        "allowedHosts": [
+          "core.example.invalid"
+        ],
+        "bodyTemplate": {
+          "identification": "{{identification}}"
+        },
         "maxResponseBytes": 32768
       }
     },
@@ -62,14 +92,24 @@
       "description": "Ask the institution to send an OTP to the registered customer destination.",
       "inputSchema": {
         "type": "object",
-        "properties": { "customerId": { "type": "string" } },
-        "required": ["customerId"]
+        "properties": {
+          "customerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
       },
       "http": {
         "method": "POST",
         "url": "https://auth.example.invalid/otp/start",
-        "allowedHosts": ["auth.example.invalid"],
-        "bodyTemplate": { "customerId": "{{customerId}}" },
+        "allowedHosts": [
+          "auth.example.invalid"
+        ],
+        "bodyTemplate": {
+          "customerId": "{{customerId}}"
+        },
         "maxResponseBytes": 16384
       }
     },
@@ -81,16 +121,28 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "challengeId": { "type": "string" },
-          "code": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "challengeId", "code"]
+        "required": [
+          "customerId",
+          "challengeId",
+          "code"
+        ]
       },
       "http": {
         "method": "POST",
         "url": "https://auth.example.invalid/otp/verify",
-        "allowedHosts": ["auth.example.invalid"],
+        "allowedHosts": [
+          "auth.example.invalid"
+        ],
         "bodyTemplate": {
           "customerId": "{{customerId}}",
           "challengeId": "{{challengeId}}",
@@ -106,16 +158,29 @@
       "description": "List active savings and credit products for a verified customer.",
       "requiresVerification": "otp",
       "verificationSubjectFrom": "customerId",
-      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "requiresConsents": [
+        {
+          "policyId": "personal-data",
+          "version": "1"
+        }
+      ],
       "inputSchema": {
         "type": "object",
-        "properties": { "customerId": { "type": "string" } },
-        "required": ["customerId"]
+        "properties": {
+          "customerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
       },
       "http": {
         "method": "GET",
         "url": "https://core.example.invalid/customers/{{customerId}}/products",
-        "allowedHosts": ["core.example.invalid"],
+        "allowedHosts": [
+          "core.example.invalid"
+        ],
         "maxResponseBytes": 65536
       }
     },
@@ -126,19 +191,33 @@
       "description": "Read savings balance data.",
       "requiresVerification": "otp",
       "verificationSubjectFrom": "customerId",
-      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "requiresConsents": [
+        {
+          "policyId": "personal-data",
+          "version": "1"
+        }
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "productId": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "productId"]
+        "required": [
+          "customerId",
+          "productId"
+        ]
       },
       "http": {
         "method": "GET",
         "url": "https://core.example.invalid/customers/{{customerId}}/savings/{{productId}}/balance",
-        "allowedHosts": ["core.example.invalid"],
+        "allowedHosts": [
+          "core.example.invalid"
+        ],
         "maxResponseBytes": 32768
       }
     },
@@ -149,20 +228,36 @@
       "description": "Read recent account movements.",
       "requiresVerification": "otp",
       "verificationSubjectFrom": "customerId",
-      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "requiresConsents": [
+        {
+          "policyId": "personal-data",
+          "version": "1"
+        }
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "productId": { "type": "string" },
-          "limit": { "type": "number" }
+          "customerId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          }
         },
-        "required": ["customerId", "productId"]
+        "required": [
+          "customerId",
+          "productId"
+        ]
       },
       "http": {
         "method": "GET",
         "url": "https://core.example.invalid/customers/{{customerId}}/savings/{{productId}}/movements?limit={{limit}}",
-        "allowedHosts": ["core.example.invalid"],
+        "allowedHosts": [
+          "core.example.invalid"
+        ],
         "maxResponseBytes": 65536
       }
     },
@@ -173,19 +268,33 @@
       "description": "Read active credit information.",
       "requiresVerification": "otp",
       "verificationSubjectFrom": "customerId",
-      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "requiresConsents": [
+        {
+          "policyId": "personal-data",
+          "version": "1"
+        }
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "productId": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "productId"]
+        "required": [
+          "customerId",
+          "productId"
+        ]
       },
       "http": {
         "method": "GET",
         "url": "https://core.example.invalid/customers/{{customerId}}/credits/{{productId}}",
-        "allowedHosts": ["core.example.invalid"],
+        "allowedHosts": [
+          "core.example.invalid"
+        ],
         "maxResponseBytes": 32768
       }
     },
@@ -196,13 +305,21 @@
       "description": "List documents available to a customer.",
       "inputSchema": {
         "type": "object",
-        "properties": { "customerId": { "type": "string" } },
-        "required": ["customerId"]
+        "properties": {
+          "customerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
       },
       "http": {
         "method": "GET",
         "url": "https://documents.example.invalid/customers/{{customerId}}/documents",
-        "allowedHosts": ["documents.example.invalid"],
+        "allowedHosts": [
+          "documents.example.invalid"
+        ],
         "maxResponseBytes": 32768
       }
     },
@@ -214,15 +331,24 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "documentType": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "documentType": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "documentType"]
+        "required": [
+          "customerId",
+          "documentType"
+        ]
       },
       "http": {
         "method": "POST",
         "url": "https://documents.example.invalid/documents/quote",
-        "allowedHosts": ["documents.example.invalid"],
+        "allowedHosts": [
+          "documents.example.invalid"
+        ],
         "bodyTemplate": {
           "customerId": "{{customerId}}",
           "documentType": "{{documentType}}"
@@ -237,19 +363,33 @@
       "description": "Generate the selected document after confirmation.",
       "requiresVerification": "otp",
       "verificationSubjectFrom": "customerId",
-      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "requiresConsents": [
+        {
+          "policyId": "personal-data",
+          "version": "1"
+        }
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "documentType": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "documentType": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "documentType"]
+        "required": [
+          "customerId",
+          "documentType"
+        ]
       },
       "http": {
         "method": "POST",
         "url": "https://documents.example.invalid/documents/generate",
-        "allowedHosts": ["documents.example.invalid"],
+        "allowedHosts": [
+          "documents.example.invalid"
+        ],
         "idempotencyHeader": "Idempotency-Key",
         "bodyTemplate": {
           "customerId": "{{customerId}}",
@@ -268,15 +408,24 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" },
-          "documentId": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
         },
-        "required": ["customerId", "documentId"]
+        "required": [
+          "customerId",
+          "documentId"
+        ]
       },
       "http": {
         "method": "POST",
         "url": "https://documents.example.invalid/documents/email",
-        "allowedHosts": ["documents.example.invalid"],
+        "allowedHosts": [
+          "documents.example.invalid"
+        ],
         "idempotencyHeader": "Idempotency-Key",
         "bodyTemplate": {
           "customerId": "{{customerId}}",
@@ -291,7 +440,11 @@
       "id": "account_balance",
       "name": "Account balance",
       "description": "Secure savings balance, movement and active credit lookup.",
-      "triggerExamples": ["quiero consultar mi saldo", "quiero ver mis movimientos", "quiero consultar mi crédito"],
+      "triggerExamples": [
+        "quiero consultar mi saldo",
+        "quiero ver mis movimientos",
+        "quiero consultar mi crédito"
+      ],
       "sessionTtlSeconds": 600,
       "steps": [
         {
@@ -308,20 +461,28 @@
           "field": "identification",
           "prompt": "Ingresa tu identificación sin espacios ni guiones.",
           "transform": "digits",
-          "validation": { "minLength": 8, "maxLength": 15, "regex": "^[0-9]+$" }
+          "validation": {
+            "minLength": 8,
+            "maxLength": 15,
+            "regex": "^[0-9]+$"
+          }
         },
         {
           "id": "identity",
           "type": "tool",
           "tool": "resolve_customer",
-          "input": { "identification": "{{identification}}" },
+          "input": {
+            "identification": "{{identification}}"
+          },
           "saveAs": "customer"
         },
         {
           "id": "otp",
           "type": "verification",
           "startTool": "start_customer_otp",
-          "startInput": { "customerId": "{{customer.customerId}}" },
+          "startInput": {
+            "customerId": "{{customer.customerId}}"
+          },
           "verifyTool": "verify_customer_otp",
           "verifyInput": {
             "customerId": "{{customer.customerId}}",
@@ -336,7 +497,9 @@
           "id": "products",
           "type": "tool",
           "tool": "list_products",
-          "input": { "customerId": "{{customer.customerId}}" },
+          "input": {
+            "customerId": "{{customer.customerId}}"
+          },
           "saveAs": "productResponse"
         },
         {
@@ -345,8 +508,14 @@
           "field": "productType",
           "prompt": "¿Qué deseas consultar?",
           "options": [
-            { "value": "savings", "label": "Ahorros" },
-            { "value": "credit", "label": "Créditos" }
+            {
+              "value": "savings",
+              "label": "Ahorros"
+            },
+            {
+              "value": "credit",
+              "label": "Créditos"
+            }
           ],
           "store": "value"
         },
@@ -356,7 +525,10 @@
           "field": "product",
           "prompt": "Selecciona el producto.",
           "source": "productResponse.products",
-          "filter": { "path": "type", "equals": "{{productType}}" },
+          "filter": {
+            "path": "type",
+            "equals": "{{productType}}"
+          },
           "valuePath": "id",
           "labelPath": "displayName",
           "store": "item",
@@ -452,7 +624,10 @@
       "id": "bank_certificate",
       "name": "Generated document",
       "description": "Quote, verify, confirm, generate and deliver a customer document.",
-      "triggerExamples": ["necesito un certificado", "quiero generar un documento"],
+      "triggerExamples": [
+        "necesito un certificado",
+        "quiero generar un documento"
+      ],
       "sessionTtlSeconds": 600,
       "steps": [
         {
@@ -469,20 +644,28 @@
           "field": "identification",
           "prompt": "Ingresa tu identificación sin espacios ni guiones.",
           "transform": "digits",
-          "validation": { "minLength": 8, "maxLength": 15, "regex": "^[0-9]+$" }
+          "validation": {
+            "minLength": 8,
+            "maxLength": 15,
+            "regex": "^[0-9]+$"
+          }
         },
         {
           "id": "identity",
           "type": "tool",
           "tool": "resolve_customer",
-          "input": { "identification": "{{identification}}" },
+          "input": {
+            "identification": "{{identification}}"
+          },
           "saveAs": "customer"
         },
         {
           "id": "documents",
           "type": "tool",
           "tool": "list_documents",
-          "input": { "customerId": "{{customer.customerId}}" },
+          "input": {
+            "customerId": "{{customer.customerId}}"
+          },
           "saveAs": "documentResponse"
         },
         {
@@ -515,7 +698,9 @@
           "id": "otp",
           "type": "verification",
           "startTool": "start_customer_otp",
-          "startInput": { "customerId": "{{customer.customerId}}" },
+          "startInput": {
+            "customerId": "{{customer.customerId}}"
+          },
           "verifyTool": "verify_customer_otp",
           "verifyInput": {
             "customerId": "{{customer.customerId}}",
