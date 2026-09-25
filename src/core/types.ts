@@ -432,6 +432,7 @@ export interface ProcessedEventRecord {
   processedAt: string;
   deliveredAt?: string;
   deliveries?: ChannelDeliveryReceipt[];
+  acceptedOutboundCount?: number;
   deliveryStatus?: ChannelDeliveryStatus;
   expiresAt?: number;
 }
