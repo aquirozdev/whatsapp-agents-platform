@@ -432,5 +432,6 @@ export interface ProcessedEventRecord {
   processedAt: string;
   deliveredAt?: string;
   deliveries?: ChannelDeliveryReceipt[];
+  deliveryStatus?: ChannelDeliveryStatus;
   expiresAt?: number;
 }
