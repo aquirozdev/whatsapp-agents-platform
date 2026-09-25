@@ -3,6 +3,7 @@ import { PlatformStore } from "../storage/dynamo.js";
 import { sha256 } from "../core/security.js";
 import type { AgentConfig } from "../core/types.js";
 import { validateAgentConfig } from "../core/config-validation.js";
+import { migrateAgentConfig } from "../core/config-migrations.js";
 
 const file = process.argv[2];
 if (!file) {
@@ -11,7 +12,7 @@ if (!file) {
 }
 
 const apiKey = process.argv[3];
-const config = JSON.parse(await readFile(file, "utf8")) as AgentConfig;
+const config = migrateAgentConfig(JSON.parse(await readFile(file, "utf8")) as AgentConfig);
 const store = new PlatformStore();
 const existing = await store.getTenant(config.tenantId);
 
