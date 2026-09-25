@@ -6,7 +6,7 @@
   "maxToolRounds": 4,
   "whatsapp": {
     "phoneNumberId": "123456789012345",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/customer/whatsapp-token",
+    "accessTokenSecret": { "key": "whatsapp/access-token" },
     "graphApiVersion": "v26.0",
     "sendTimeoutMs": 10000
   },
