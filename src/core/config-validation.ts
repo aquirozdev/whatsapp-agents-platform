@@ -1,4 +1,4 @@
-import type { AgentConfig, ToolBinding, WorkflowStep } from "./types.js";
+import { CURRENT_SCHEMA_VERSION, type AgentConfig, type ToolBinding, type WorkflowStep } from "./types.js";
 
 export interface ConfigIssue { path: string; message: string; }
 
@@ -10,6 +10,9 @@ const MAX_CONFIG_BYTES = 300 * 1024;
 
 export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
+  if (config.schemaVersion !== undefined && (!Number.isInteger(config.schemaVersion) || config.schemaVersion < 1 || config.schemaVersion > CURRENT_SCHEMA_VERSION)) {
+    issues.push({ path: "schemaVersion", message: `schemaVersion must be an integer between 1 and ${CURRENT_SCHEMA_VERSION}.` });
+  }
   if (!config.tenantId?.trim()) issues.push({ path: "tenantId", message: "tenantId is required." });
   else if (!TENANT_ID.test(config.tenantId)) issues.push({ path: "tenantId", message: "tenantId must match [a-z0-9][a-z0-9_-]{0,63}." });
   if (!config.displayName?.trim()) issues.push({ path: "displayName", message: "displayName is required." });
@@ -151,6 +154,20 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
   }
   if (http.maxResponseBytes !== undefined && (http.maxResponseBytes <= 0 || http.maxResponseBytes > 5 * 1024 * 1024)) {
     issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero and at most 5 MiB." });
+  }
+  if (http.retry) {
+    if (http.retry.maxAttempts !== undefined && (!Number.isInteger(http.retry.maxAttempts) || http.retry.maxAttempts < 1 || http.retry.maxAttempts > 4)) {
+      issues.push({ path: `${path}.http.retry.maxAttempts`, message: "maxAttempts must be an integer between 1 and 4." });
+    }
+    if (http.retry.baseDelayMs !== undefined && (http.retry.baseDelayMs < 25 || http.retry.baseDelayMs > 10000)) {
+      issues.push({ path: `${path}.http.retry.baseDelayMs`, message: "baseDelayMs must be between 25 and 10000." });
+    }
+    if (http.retry.maxDelayMs !== undefined && (http.retry.maxDelayMs < 25 || http.retry.maxDelayMs > 30000)) {
+      issues.push({ path: `${path}.http.retry.maxDelayMs`, message: "maxDelayMs must be between 25 and 30000." });
+    }
+    if ((http.retry.maxAttempts ?? 1) > 1 && !["GET", "DELETE"].includes(http.method) && !http.idempotencyHeader) {
+      issues.push({ path: `${path}.http.retry`, message: "Retries for side-effecting HTTP methods require idempotencyHeader." });
+    }
   }
   for (const [header, ref] of Object.entries(http.secretHeaders ?? {})) {
     const key = typeof ref === "string" ? ref.trim() : ref?.key?.trim();
