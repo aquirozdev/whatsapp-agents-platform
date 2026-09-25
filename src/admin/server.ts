@@ -116,7 +116,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     const file = fileFromPath(url.pathname, "/api/config/");
     if (!file) { json(res, 400, { error: "invalid_file_name" }); return true; }
     try {
-      const config = JSON.parse(await readBody(req)) as AgentConfig;
+      const config = migrateAgentConfig(JSON.parse(await readBody(req)) as AgentConfig);
       const issues = validateAgentConfig(config);
       if (issues.length) { json(res, 422, { valid: false, issues }); return true; }
       await saveConfig(file, config);
