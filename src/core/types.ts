@@ -1,7 +1,20 @@
-export type ChannelKind = "whatsapp" | "web";
+export type ChannelKind = string;
 export type ConversationMode = "ai" | "human";
 export type VerificationLevel = "none" | "otp";
 export type ToolExposure = "agent" | "workflow" | "both";
+
+export interface SecretRef {
+  key: string;
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  apiKeySecret?: SecretRef;
+  maxTokens?: number;
+  temperature?: number;
+}
 
 export interface JsonSchema {
   type?: string;
@@ -22,7 +35,7 @@ export interface HttpToolConfig {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   url: string;
   headers?: Record<string, string>;
-  secretHeaders?: Record<string, string>;
+  secretHeaders?: Record<string, string | SecretRef>;
   bodyTemplate?: unknown;
   timeoutMs?: number;
   idempotencyHeader?: string;
@@ -46,7 +59,10 @@ export interface ToolBinding {
 
 export interface WhatsAppChannelConfig {
   phoneNumberId: string;
-  accessTokenSecretArn: string;
+  /** Portable secret reference. Prefer this over accessTokenSecretArn. */
+  accessTokenSecret?: SecretRef;
+  /** @deprecated AWS-specific compatibility field. */
+  accessTokenSecretArn?: string;
   graphApiVersion: string;
   sendTimeoutMs?: number;
 }
@@ -223,6 +239,7 @@ export interface WorkflowAwaiting {
 
 export interface WorkflowState {
   workflowId: string;
+  configVersion?: string;
   stepIndex: number;
   status: "active" | "completed" | "cancelled" | "expired";
   data: Record<string, unknown>;
@@ -237,7 +254,12 @@ export interface AgentConfig {
   displayName: string;
   enabled: boolean;
   systemPrompt: string;
+  /** Portable provider/model selection. */
+  model?: ModelConfig;
+  /** @deprecated Bedrock-specific compatibility field. */
   modelId?: string;
+  /** Immutable published config version. Assigned by the store on publish. */
+  configVersion?: string;
   maxToolRounds?: number;
   apiKeyHash?: string;
   whatsapp?: WhatsAppChannelConfig;
@@ -268,6 +290,8 @@ export interface ConversationState {
   mode: ConversationMode;
   messages: ChatMessage[];
   verification: VerificationState;
+  configVersion?: string;
+  revision?: number;
   workflow?: WorkflowState;
   updatedAt: string;
 }
