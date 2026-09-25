@@ -12,7 +12,7 @@ The platform separates eight concepts:
 
 1. **Tenant** — customer configuration and credentials.
 2. **Channel** — WhatsApp or Web/API transport.
-3. **Agent** — conversational reasoning and workflow routing through Bedrock.
+3. **Agent** — conversational reasoning and workflow routing through a `ModelProvider`.
 4. **Workflow** — deterministic transactional sequence.
 5. **Policy** — deterministic authorization checks outside the model.
 6. **Tool** — customer/system action executed by application code.
@@ -29,7 +29,7 @@ The platform separates eight concepts:
 | Worker Lambda | Agent mode, workflow mode, tools, policies, synchronous API |
 | DynamoDB | Tenant config, conversation/workflow state, consent, OTP, processed-event dedupe, audit |
 | Secrets Manager | Meta secrets, WhatsApp tokens and tenant integration credentials |
-| Bedrock Runtime | Conversational inference and workflow routing |
+| Model adapter | Conversational inference and workflow routing (Bedrock is the reference adapter) |
 | SNS / SES | Optional built-in OTP delivery adapters |
 
 No additional service is required to add workflows.
@@ -88,7 +88,7 @@ Conversation has active workflow?
   yes    no
    |     |
    v     v
-Workflow  Bedrock Converse
+Workflow  ModelProvider
 Runtime       |
    |          +-- answer normally
    |          +-- call agent-exposed tool
@@ -102,9 +102,9 @@ Runtime       |
 
 ### Agent mode
 
-Bedrock receives only tools whose `exposure` is `agent` or `both`, plus the platform-reserved `start_workflow` tool when workflows exist.
+The selected model provider receives only tools whose `exposure` is `agent` or `both`, plus the platform-reserved `start_workflow` tool when workflows exist.
 
-Amazon Bedrock client-side tool use means the model requests a tool and application code executes it. The model never receives credentials and never performs the HTTP call itself.
+Tool calls are provider-neutral: the model requests a tool and application code executes it. The model never receives credentials and never performs customer HTTP calls itself.
 
 ### Workflow mode
 
@@ -112,9 +112,9 @@ After `start_workflow`, the LLM is removed from the transaction path. User repli
 
 Workflow primitives are documented in [WORKFLOWS.md](WORKFLOWS.md).
 
-## Why direct Bedrock Converse
+## Why a small model port
 
-The platform needs model conversation, routing and client-side tool use. Converse already provides the model/tool protocol. The deterministic workflow runtime handles transactional sequencing without introducing a general agent framework or another runtime service.
+The platform needs conversation, routing and client-side tool use, not a general agent framework. A small `ModelProvider` port normalizes text/tool-call semantics while provider adapters translate to Bedrock Converse or OpenAI-compatible APIs. The deterministic workflow runtime handles transactional sequencing without another runtime service.
 
 A long-running external workflow engine can still be added later for multi-day approvals; it is not required for conversational transactions lasting minutes.
 
@@ -144,11 +144,11 @@ HTTP tools support bounded timeouts, Secrets Manager headers and an optional ide
 
 | PK | SK | Entity |
 |---|---|---|
-| `TENANT#<tenantId>` | `CONFIG` | Tenant config, tools, workflows, capabilities |
+| `TENANT#<tenantId>` | `CONFIG` | Active tenant config snapshot |\n| `TENANT#<tenantId>` | `CONFIG#<version>` | Immutable published tenant config version |
 | `TENANT#<tenantId>#CONV#<channel>#<conversationId>` | `STATE` | Conversation + active workflow + verification |
 | `TENANT#<tenantId>#SUBJECT#<subjectId>` | `CONSENT#<policyId>#<version>` | Durable consent |
 | `TENANT#<tenantId>#OTP#<challengeId>` | `CHALLENGE` | Built-in OTP challenge |
-| `EVENT#<externalMessageId>` | `EVENT` | Successfully processed event |
+| `EVENT#<externalMessageId>` | `EVENT` | Prepared/completed durable turn event and outbound payload |
 | `TENANT#<tenantId>#AUDIT#YYYY-MM-DD` | `<timestamp>#<uuid>` | Audit event |
 
 GSI1 maps WhatsApp phone numbers:
@@ -172,10 +172,10 @@ No domain-specific class or Lambda is required.
 - SQS retries worker failures.
 - DLQ receives a record after five failed receives.
 - FIFO batch size is 1 for simple ordering/failure behavior.
-- Event dedupe is persisted after success.
+- Conversation state and a prepared turn/outbound event are committed atomically; retries resume outbound delivery without re-running the business turn.
 - Side-effecting HTTP tools can forward an idempotency key to the upstream API.
 - HTTP timeouts are bounded.
-- Bedrock tool rounds are bounded.
+- Model tool rounds are bounded.
 - Workflow steps have a 50-step internal guard and configurable session TTL.
 
 ## Extension seams
