@@ -72,6 +72,30 @@ export class PlatformStore {
     }));
   }
 
+  async claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean> {
+    if (cooldownSeconds <= 0) return true;
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + cooldownSeconds;
+    try {
+      await client.send(new PutCommand({
+        TableName: tableName,
+        Item: {
+          pk: `TENANT#${tenantId}#OTP_RATE#${userId}`,
+          sk: "SLOT",
+          entity: "otp_rate_limit",
+          expiresAt,
+          ttl: expiresAt + 3600,
+        },
+        ConditionExpression: "attribute_not_exists(pk) OR expiresAt <= :now",
+        ExpressionAttributeValues: { ":now": now },
+      }));
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") return false;
+      throw error;
+    }
+  }
+
   async putOtpChallenge(challenge: OtpChallenge): Promise<void> {
     await client.send(new PutCommand({
       TableName: tableName,
