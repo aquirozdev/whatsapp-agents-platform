@@ -1,6 +1,7 @@
 import { BedrockRuntimeClient, ConverseCommand, type ContentBlock, type Message } from "@aws-sdk/client-bedrock-runtime";
 import type { ModelContent, ModelMessage, ModelProvider, ModelRequest, ModelResponse } from "../../ports/model.js";
 import { awsClientOptions } from "./client-options.js";
+import { ModelProviderError } from "../../core/errors.js";
 
 function toBedrockMessage(message: ModelMessage): Message {
   const content = message.content.map((block): ContentBlock => {
@@ -33,7 +34,9 @@ export class BedrockModelProvider implements ModelProvider {
   private readonly client = new BedrockRuntimeClient(awsClientOptions());
 
   async generate(request: ModelRequest): Promise<ModelResponse> {
-    const response = await this.client.send(new ConverseCommand({
+    let response;
+    try {
+      response = await this.client.send(new ConverseCommand({
       modelId: request.model.model,
       system: [{ text: request.system }],
       messages: request.messages.map(toBedrockMessage),
@@ -50,7 +53,16 @@ export class BedrockModelProvider implements ModelProvider {
           },
         })) as never[],
       } : undefined,
-    }));
+      }));
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "UnknownError";
+      const message = error instanceof Error ? error.message : "Bedrock request failed.";
+      if (/Throttl|TooManyRequests|ServiceQuota/i.test(name)) throw new ModelProviderError(message, "MODEL_RATE_LIMIT", "rate_limit", true);
+      if (/Timeout/i.test(name)) throw new ModelProviderError(message, "MODEL_TIMEOUT", "timeout", true);
+      if (/AccessDenied|Unauthorized|UnrecognizedClient/i.test(name)) throw new ModelProviderError(message, "MODEL_AUTH", "auth", false);
+      if (/Validation|ResourceNotFound/i.test(name)) throw new ModelProviderError(message, "MODEL_INVALID_REQUEST", "validation", false);
+      throw new ModelProviderError(message, "MODEL_UNAVAILABLE", "unavailable", true, { providerError: name });
+    }
 
     const output = response.output?.message;
     if (!output) throw new Error("Bedrock returned no message output.");
@@ -78,6 +90,13 @@ export class BedrockModelProvider implements ModelProvider {
       message: { role: "assistant", content },
       text: texts.join("\n").trim(),
       toolCalls,
+      usage: {
+        inputTokens: response.usage?.inputTokens,
+        outputTokens: response.usage?.outputTokens,
+        totalTokens: response.usage?.totalTokens,
+      },
+      finishReason: response.stopReason,
+      providerRequestId: response.$metadata.requestId,
     };
   }
 }

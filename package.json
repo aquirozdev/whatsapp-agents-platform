@@ -20,7 +20,12 @@
     "admin": "tsx src/admin/server.ts",
     "test:unit": "vitest run --exclude tests/integration/**",
     "test:architecture": "vitest run tests/architecture-boundaries.test.ts",
-    "test:integration": "vitest run tests/integration --passWithNoTests"
+    "test:integration": "vitest run tests/integration --passWithNoTests",
+    "migrate:tenant": "tsx src/scripts/migrate-tenant.ts",
+    "diff:tenant": "tsx src/scripts/diff-tenant.ts",
+    "test:contracts": "vitest run tests/*contract*.test.ts",
+    "deploy:staging": "cdk deploy -c stage=staging -c deploymentStrategy=canary10",
+    "deploy:production": "cdk deploy -c stage=production -c deploymentStrategy=canary10"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1136.0",

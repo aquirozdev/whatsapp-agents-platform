@@ -2,7 +2,7 @@ import { Duration, RemovalPolicy, Stack, type StackProps, CfnOutput } from "aws-
 import { Construct } from "constructs";
 import { AttributeType, BillingMode, Table } from "aws-cdk-lib/aws-dynamodb";
 import { Queue } from "aws-cdk-lib/aws-sqs";
-import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { Alias, Runtime, type IFunction } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { HttpApi, HttpMethod, HttpStage, LogGroupLogDestination } from "aws-cdk-lib/aws-apigatewayv2";
@@ -11,6 +11,7 @@ import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Alarm, ComparisonOperator, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import { LambdaDeploymentConfig, LambdaDeploymentGroup } from "aws-cdk-lib/aws-codedeploy";
 
 interface PlatformStackProps extends StackProps { stage: string }
 
@@ -69,6 +70,7 @@ export class PlatformStack extends Stack {
       DEFAULT_MODEL_PROVIDER: String(this.node.tryGetContext("defaultModelProvider") ?? "bedrock"),
       DEFAULT_MODEL_ID: String(this.node.tryGetContext("defaultModelId") ?? ""),
       OTP_EMAIL_FROM: String(this.node.tryGetContext("otpEmailFrom") ?? ""),
+      METRICS_NAMESPACE: `WhatsAppAgentsPlatform/${props.stage}`,
     };
 
     const ingress = new NodejsFunction(this, "IngressFunction", {
@@ -106,9 +108,57 @@ export class PlatformStack extends Stack {
     worker.addToRolePolicy(new PolicyStatement({ actions: ["sns:Publish"], resources: ["*"] }));
     worker.addToRolePolicy(new PolicyStatement({ actions: ["ses:SendEmail"], resources: ["*"] }));
 
+    const deploymentStrategy = String(this.node.tryGetContext("deploymentStrategy") ?? "direct");
+    let ingressTarget: IFunction = ingress;
+    let workerTarget: IFunction = worker;
+
+    if (deploymentStrategy === "canary10") {
+      const ingressAlias = new Alias(this, "IngressLiveAlias", {
+        aliasName: "live",
+        version: ingress.currentVersion,
+      });
+      const workerAlias = new Alias(this, "WorkerLiveAlias", {
+        aliasName: "live",
+        version: worker.currentVersion,
+      });
+
+      const ingressCanaryAlarm = new Alarm(this, "IngressCanaryErrors", {
+        metric: ingressAlias.metricErrors({ period: Duration.minutes(1) }),
+        threshold: Number(this.node.tryGetContext("canaryErrorThreshold") ?? 5),
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      });
+      const workerCanaryAlarm = new Alarm(this, "WorkerCanaryErrors", {
+        metric: workerAlias.metricErrors({ period: Duration.minutes(1) }),
+        threshold: Number(this.node.tryGetContext("canaryErrorThreshold") ?? 5),
+        evaluationPeriods: 1,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      });
+
+      new LambdaDeploymentGroup(this, "IngressDeploymentGroup", {
+        alias: ingressAlias,
+        deploymentConfig: LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+        alarms: [ingressCanaryAlarm],
+        autoRollback: { failedDeployment: true, stoppedDeployment: true, deploymentInAlarm: true },
+      });
+      new LambdaDeploymentGroup(this, "WorkerDeploymentGroup", {
+        alias: workerAlias,
+        deploymentConfig: LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+        alarms: [workerCanaryAlarm],
+        autoRollback: { failedDeployment: true, stoppedDeployment: true, deploymentInAlarm: true },
+      });
+
+      ingressTarget = ingressAlias;
+      workerTarget = workerAlias;
+    } else if (deploymentStrategy !== "direct") {
+      throw new Error(`Unsupported deploymentStrategy ${deploymentStrategy}; use direct or canary10.`);
+    }
+
     // A single record per invocation keeps FIFO failure semantics simple and preserves
     // per-conversation ordering while Lambda still scales concurrently across message groups.
-    worker.addEventSource(new SqsEventSource(queue, {
+    workerTarget.addEventSource(new SqsEventSource(queue, {
       batchSize: 1,
       reportBatchItemFailures: true,
       maxConcurrency: 20,
@@ -134,11 +184,11 @@ export class PlatformStack extends Stack {
       createDefaultStage: false,
     });
 
-    const ingressIntegration = new HttpLambdaIntegration("IngressIntegration", ingress);
+    const ingressIntegration = new HttpLambdaIntegration("IngressIntegration", ingressTarget);
     api.addRoutes({ path: "/health", methods: [HttpMethod.GET], integration: ingressIntegration });
     api.addRoutes({ path: "/webhooks/whatsapp", methods: [HttpMethod.GET, HttpMethod.POST], integration: ingressIntegration });
 
-    const workerIntegration = new HttpLambdaIntegration("WorkerIntegration", worker);
+    const workerIntegration = new HttpLambdaIntegration("WorkerIntegration", workerTarget);
     api.addRoutes({ path: "/v1/chat", methods: [HttpMethod.POST], integration: workerIntegration });
     api.addRoutes({ path: "/v1/conversations/{channel}/{conversationId}/mode", methods: [HttpMethod.POST], integration: workerIntegration });
 
@@ -160,6 +210,7 @@ export class PlatformStack extends Stack {
       },
     });
 
+    new CfnOutput(this, "DeploymentStrategy", { value: deploymentStrategy });
     new CfnOutput(this, "ApiUrl", { value: api.apiEndpoint });
     new CfnOutput(this, "TableName", { value: table.tableName });
     new CfnOutput(this, "QueueUrl", { value: queue.queueUrl });

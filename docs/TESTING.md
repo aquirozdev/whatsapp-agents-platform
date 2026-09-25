@@ -37,3 +37,7 @@ The suite intentionally does not emulate model quality. Model adapters are teste
 ## What remains external
 
 Meta webhook/send behavior and real model-provider behavior should be covered by staging smoke tests because local emulators cannot provide authoritative compatibility for those external APIs.
+
+## Contract suites
+
+`npm run test:contracts` exercises provider/channel/resilience contracts independently of customer configuration. New adapters should be added to the appropriate contract suite in addition to provider-specific tests. The Floci suite is the storage/dispatcher/secrets contract proof for the AWS adapter and also covers delivery reconciliation and distributed tool quotas.

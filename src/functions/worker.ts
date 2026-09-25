@@ -17,23 +17,25 @@ import { AwsSecretsManagerProvider } from "../adapters/aws/secrets-manager.js";
 import { AwsOtpDeliveryProvider } from "../adapters/aws/otp-delivery.js";
 import { BedrockModelProvider } from "../adapters/aws/bedrock-model.js";
 import { OpenAICompatibleModelProvider } from "../adapters/openai-compatible-model.js";
+import { AwsCloudWatchObservability } from "../adapters/aws/cloudwatch-observability.js";
 
 const store = new PlatformStore();
 const secrets = new AwsSecretsManagerProvider();
 const whatsapp = new MetaWhatsAppChannel(secrets);
 const otpDelivery = new AwsOtpDeliveryProvider();
+const observability = new AwsCloudWatchObservability();
 const otpHmacSecret = process.env.OTP_HMAC_SECRET_REF ?? process.env.OTP_HMAC_SECRET_ARN ?? "";
 const toolExecutors = new ToolExecutorRegistry([
   new HttpToolExecutor(secrets),
   new BuiltinToolExecutor(store, secrets, otpDelivery, otpHmacSecret),
 ]);
-const tools = new ToolRegistry(store, toolExecutors);
+const tools = new ToolRegistry(store, toolExecutors, observability);
 const workflows = new WorkflowRuntime(store, tools);
 const models = new ModelProviderRegistry([new BedrockModelProvider(), new OpenAICompatibleModelProvider(secrets)]);
 const defaultModel: ModelConfig | undefined = process.env.DEFAULT_MODEL_ID
   ? { provider: process.env.DEFAULT_MODEL_PROVIDER ?? "bedrock", model: process.env.DEFAULT_MODEL_ID }
   : undefined;
-const runtime = new AgentRuntime(store, models, tools, workflows, { defaultModel });
+const runtime = new AgentRuntime(store, models, tools, workflows, { defaultModel, observability });
 
 const MAX_WEB_MESSAGE_CHARS = 8000;
 const MAX_WEB_ID_CHARS = 256;
@@ -73,8 +75,12 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
         ? await store.getTenantVersion(inbound.tenantId, processed.configVersion)
         : await store.getTenant(inbound.tenantId);
       if (!replayTenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled during outbound replay.`);
-      for (const message of processed.outbound) await whatsapp.send(replayTenant, replyTarget, message);
-      await store.markEventDelivered(inbound.externalMessageId);
+      const alreadyAccepted = processed.acceptedOutboundCount ?? processed.deliveries?.length ?? 0;
+      for (let index = alreadyAccepted; index < processed.outbound.length; index += 1) {
+        const receipt = await whatsapp.send(replayTenant, replyTarget, processed.outbound[index]!);
+        receipt.metadata = { ...(receipt.metadata ?? {}), messageIndex: index };
+        await store.recordOutboundReceipt(inbound.externalMessageId, receipt);
+      }
     }
     return undefined;
   }
@@ -95,9 +101,15 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
       const sendTenant = result.state.configVersion && result.state.configVersion !== tenant.configVersion
         ? (await store.getTenantVersion(tenant.tenantId, result.state.configVersion) ?? tenant)
         : tenant;
-      for (const message of result.outbound) await whatsapp.send(sendTenant, replyTarget, message);
+      for (let index = 0; index < result.outbound.length; index += 1) {
+        const receipt = await whatsapp.send(sendTenant, replyTarget, result.outbound[index]!);
+        receipt.metadata = { ...(receipt.metadata ?? {}), messageIndex: index };
+        await store.recordOutboundReceipt(inbound.externalMessageId, receipt);
+        observability.metric({ name: "OutboundAccepted", value: 1, dimensions: { Channel: inbound.channel } });
+      }
+    } else {
+      await store.markEventDelivered(inbound.externalMessageId);
     }
-    await store.markEventDelivered(inbound.externalMessageId);
     return result;
   } finally {
     if (leaseOwner) await store.releaseConversationLease(tenant.tenantId, inbound.channel, inbound.conversationId, leaseOwner);
@@ -111,6 +123,7 @@ async function handleSqs(event: SQSEvent): Promise<SQSBatchResponse> {
       const inbound = JSON.parse(record.body) as InboundEnvelope;
       await processInbound(inbound, inbound.channel === "whatsapp");
     } catch (error) {
+      observability.metric({ name: "TurnError", value: 1, dimensions: { Channel: "queue" } });
       log("error", "Worker failed to process message", {
         messageId: record.messageId,
         error: error instanceof Error ? error.message : String(error),

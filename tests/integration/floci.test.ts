@@ -117,6 +117,36 @@ describe.skipIf(!enabled)("Floci AWS adapter integration", () => {
     expect((await store.getProcessedEvent("wamid.atomic"))?.deliveredAt).toBe("2026-01-01T00:00:00.000Z");
   });
 
+  it("persists delivery receipts, reconciles statuses, and enforces tool quotas", async () => {
+    const store = new PlatformStore(tableName);
+    const state = await store.getConversation("tenant-a", "whatsapp", "c-delivery", "u-delivery");
+    await store.commitTurn(state, 0, {
+      externalMessageId: "wamid.delivery",
+      tenantId: "tenant-a",
+      channel: "whatsapp",
+      outbound: [{ kind: "text", text: "hello" }],
+      processedAt: new Date().toISOString(),
+    });
+    await store.recordOutboundReceipt("wamid.delivery", {
+      providerMessageId: "wamid.provider",
+      acceptedAt: "2026-01-01T00:00:00.000Z",
+      status: "accepted",
+    });
+    expect((await store.getProcessedEvent("wamid.delivery"))?.acceptedOutboundCount).toBe(1);
+
+    await store.updateOutboundStatus({
+      providerMessageId: "wamid.provider",
+      status: "delivered",
+      occurredAt: "2026-01-01T00:01:00.000Z",
+    });
+    const delivered = await store.getProcessedEvent("wamid.delivery");
+    expect(delivered?.deliveryStatus?.status).toBe("delivered");
+    expect(delivered?.deliveredAt).toBe("2026-01-01T00:01:00.000Z");
+
+    expect(await store.claimToolRateSlot("tenant-a", "lookup", "u1", 60, 1)).toBe(true);
+    expect(await store.claimToolRateSlot("tenant-a", "lookup", "u1", 60, 1)).toBe(false);
+  });
+
   it("resolves secrets and dispatches FIFO turns through AWS-shaped adapters", async () => {
     const secretProvider = new AwsSecretsManagerProvider();
     expect(await secretProvider.get({ key: secretName })).toBe("secret-value");

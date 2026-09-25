@@ -1,4 +1,4 @@
-import type { AgentConfig, ToolBinding, WorkflowStep } from "./types.js";
+import { CURRENT_SCHEMA_VERSION, type AgentConfig, type ToolBinding, type WorkflowStep } from "./types.js";
 
 export interface ConfigIssue { path: string; message: string; }
 
@@ -10,6 +10,9 @@ const MAX_CONFIG_BYTES = 300 * 1024;
 
 export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
+  if (config.schemaVersion !== undefined && (!Number.isInteger(config.schemaVersion) || config.schemaVersion < 1 || config.schemaVersion > CURRENT_SCHEMA_VERSION)) {
+    issues.push({ path: "schemaVersion", message: `schemaVersion must be an integer between 1 and ${CURRENT_SCHEMA_VERSION}.` });
+  }
   if (!config.tenantId?.trim()) issues.push({ path: "tenantId", message: "tenantId is required." });
   else if (!TENANT_ID.test(config.tenantId)) issues.push({ path: "tenantId", message: "tenantId must match [a-z0-9][a-z0-9_-]{0,63}." });
   if (!config.displayName?.trim()) issues.push({ path: "displayName", message: "displayName is required." });
@@ -55,6 +58,14 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
     validatePortableSchema(tool.inputSchema, `${path}.inputSchema`, issues);
     if (tool.verificationSubjectFrom && (tool.requiresVerification ?? "none") === "none") {
       issues.push({ path: `${path}.verificationSubjectFrom`, message: "verificationSubjectFrom requires requiresVerification." });
+    }
+    if (tool.rateLimit) {
+      if (!Number.isInteger(tool.rateLimit.maxCalls) || tool.rateLimit.maxCalls < 1 || tool.rateLimit.maxCalls > 100000) {
+        issues.push({ path: `${path}.rateLimit.maxCalls`, message: "maxCalls must be an integer between 1 and 100000." });
+      }
+      if (!Number.isInteger(tool.rateLimit.windowSeconds) || tool.rateLimit.windowSeconds < 1 || tool.rateLimit.windowSeconds > 86400) {
+        issues.push({ path: `${path}.rateLimit.windowSeconds`, message: "windowSeconds must be an integer between 1 and 86400." });
+      }
     }
     if (tool.kind === "http") {
       if (!tool.http) issues.push({ path: `${path}.http`, message: "HTTP tools require http configuration." });
@@ -152,6 +163,20 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
   if (http.maxResponseBytes !== undefined && (http.maxResponseBytes <= 0 || http.maxResponseBytes > 5 * 1024 * 1024)) {
     issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero and at most 5 MiB." });
   }
+  if (http.retry) {
+    if (http.retry.maxAttempts !== undefined && (!Number.isInteger(http.retry.maxAttempts) || http.retry.maxAttempts < 1 || http.retry.maxAttempts > 4)) {
+      issues.push({ path: `${path}.http.retry.maxAttempts`, message: "maxAttempts must be an integer between 1 and 4." });
+    }
+    if (http.retry.baseDelayMs !== undefined && (http.retry.baseDelayMs < 25 || http.retry.baseDelayMs > 10000)) {
+      issues.push({ path: `${path}.http.retry.baseDelayMs`, message: "baseDelayMs must be between 25 and 10000." });
+    }
+    if (http.retry.maxDelayMs !== undefined && (http.retry.maxDelayMs < 25 || http.retry.maxDelayMs > 30000)) {
+      issues.push({ path: `${path}.http.retry.maxDelayMs`, message: "maxDelayMs must be between 25 and 30000." });
+    }
+    if ((http.retry.maxAttempts ?? 1) > 1 && !["GET", "DELETE"].includes(http.method) && !http.idempotencyHeader) {
+      issues.push({ path: `${path}.http.retry`, message: "Retries for side-effecting HTTP methods require idempotencyHeader." });
+    }
+  }
   for (const [header, ref] of Object.entries(http.secretHeaders ?? {})) {
     const key = typeof ref === "string" ? ref.trim() : ref?.key?.trim();
     if (!key) issues.push({ path: `${path}.http.secretHeaders.${header}`, message: "Secret header reference must be a non-empty string or { key }." });
@@ -175,6 +200,21 @@ function validateStep(step: WorkflowStep, path: string, stepIds: Set<string>, to
   }
   if (step.type === "collect" && step.validation?.regex) {
     try { new RegExp(step.validation.regex); } catch { issues.push({ path: `${path}.validation.regex`, message: "Invalid regular expression." }); }
+  }
+  if (step.type === "message") {
+    const message = step.message;
+    if (message.kind === "text" && !message.text?.trim()) issues.push({ path: `${path}.message.text`, message: "Text message cannot be empty." });
+    if ((message.kind === "image" || message.kind === "document") && !message.url?.trim()) issues.push({ path: `${path}.message.url`, message: "Media message URL is required." });
+    if (message.kind === "template" && (!message.name?.trim() || !message.languageCode?.trim())) {
+      issues.push({ path: `${path}.message`, message: "Template messages require name and languageCode." });
+    }
+    if (message.kind === "interactive") {
+      if (message.buttons?.length && message.list) issues.push({ path: `${path}.message`, message: "Interactive message must use buttons or list, not both." });
+      if (!message.buttons?.length && !message.list) issues.push({ path: `${path}.message`, message: "Interactive message requires buttons or list." });
+      if ((message.buttons?.length ?? 0) > 3) issues.push({ path: `${path}.message.buttons`, message: "WhatsApp interactive buttons are limited to 3." });
+      const rows = message.list?.sections.reduce((total, section) => total + section.rows.length, 0) ?? 0;
+      if (rows > 10) issues.push({ path: `${path}.message.list`, message: "WhatsApp list messages are limited to 10 rows." });
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import type { PlatformStorePort } from "../ports/store.js";
 import type { ToolExecutorRegistry } from "../ports/tool-executor.js";
 import { getPath } from "./template.js";
 import { validateToolInput } from "./input-validation.js";
+import { noopObservability, observe, type ObservabilityPort } from "../ports/observability.js";
 
 export type ToolCaller = "agent" | "workflow";
 
@@ -13,6 +14,7 @@ export class ToolRegistry {
   constructor(
     private readonly store: PlatformStorePort,
     private readonly executors: ToolExecutorRegistry,
+    private readonly observability: ObservabilityPort = noopObservability,
   ) {}
 
   getAgentBindings(tenant: AgentConfig): ToolBinding[] {
@@ -97,6 +99,34 @@ export class ToolRegistry {
       }
     }
 
+    if (binding.rateLimit) {
+      const scope = binding.rateLimit.scope ?? "user";
+      const subject = scope === "tenant"
+        ? "tenant"
+        : scope === "conversation"
+          ? ctx.state.conversationId
+          : ctx.state.userId;
+      const allowed = await this.store.claimToolRateSlot(
+        ctx.tenant.tenantId,
+        binding.name,
+        subject,
+        binding.rateLimit.windowSeconds,
+        binding.rateLimit.maxCalls,
+      );
+      if (!allowed) {
+        this.observability.metric({ name: "ToolRateLimited", value: 1, dimensions: { ToolKind: binding.kind } });
+        return {
+          ok: false,
+          error: {
+            code: "TOOL_RATE_LIMITED",
+            message: `Rate limit exceeded for tool ${binding.name}.`,
+            retryable: true,
+            category: "rate_limit",
+          },
+        };
+      }
+    }
+
     const executor = this.executors.get(binding.kind);
     if (!executor) {
       return {
@@ -107,6 +137,15 @@ export class ToolRegistry {
         },
       };
     }
-    return executor.execute(binding, ctx, input);
+    const started = Date.now();
+    const result = await observe(
+      this.observability,
+      "tool.execute",
+      { "tool.name": binding.name, "tool.kind": binding.kind, "tool.caller": "runtime" },
+      () => executor.execute(binding, ctx, input),
+    );
+    this.observability.metric({ name: "ToolLatency", value: Date.now() - started, unit: "Milliseconds", dimensions: { ToolKind: binding.kind } });
+    this.observability.metric({ name: result.ok ? "ToolSuccess" : "ToolError", value: 1, dimensions: { ToolKind: binding.kind } });
+    return result;
   }
 }

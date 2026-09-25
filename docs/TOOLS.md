@@ -244,3 +244,17 @@ For sensitive resources, pair verification with the customer identifier used by 
 ```
 
 The policy engine rejects the call when the active verified subject does not equal `input.customerId`, even if the OTP session has not expired.
+
+## Retries and quotas
+
+HTTP tools may declare a bounded retry policy. GET/DELETE operations may retry directly; POST/PUT/PATCH retries are only enabled when `idempotencyHeader` is configured. Retryable classes are timeout, HTTP 429 and HTTP 5xx, with bounded exponential delay.
+
+Tools may also declare a distributed quota:
+
+```json
+{
+  "rateLimit": { "maxCalls": 10, "windowSeconds": 60, "scope": "user" }
+}
+```
+
+Scopes are `tenant`, `user` or `conversation`. The AWS store implements the counter with conditional DynamoDB updates and TTL; no Redis/service is required.

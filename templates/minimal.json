@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "tenantId": "customer-demo",
   "displayName": "Customer Demo",
   "enabled": true,
@@ -12,9 +13,13 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "reason": { "type": "string" }
+          "reason": {
+            "type": "string"
+          }
         },
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "additionalProperties": false
       }
     }

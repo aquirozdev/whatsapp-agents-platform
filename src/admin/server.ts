@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import type { AgentConfig } from "../core/types.js";
 import { validateAgentConfig } from "../core/config-validation.js";
+import { migrateAgentConfig } from "../core/config-migrations.js";
 import { PlatformStore } from "../storage/dynamo.js";
 import { sha256 } from "../core/security.js";
 
@@ -64,7 +65,7 @@ async function listJsonFiles(dir: string): Promise<string[]> {
 }
 
 async function loadConfig(path: string): Promise<AgentConfig> {
-  return JSON.parse(await readFile(path, "utf8")) as AgentConfig;
+  return migrateAgentConfig(JSON.parse(await readFile(path, "utf8")) as AgentConfig);
 }
 
 async function saveConfig(file: string, config: AgentConfig): Promise<void> {
@@ -101,7 +102,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
   if (req.method === "POST" && url.pathname === "/api/validate") {
     if (!mutationAllowed(req)) { json(res, 403, { error: "forbidden" }); return true; }
     try {
-      const config = JSON.parse(await readBody(req)) as AgentConfig;
+      const config = migrateAgentConfig(JSON.parse(await readBody(req)) as AgentConfig);
       const issues = validateAgentConfig(config);
       json(res, issues.length ? 422 : 200, { valid: issues.length === 0, issues });
     } catch (error) {
@@ -115,7 +116,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     const file = fileFromPath(url.pathname, "/api/config/");
     if (!file) { json(res, 400, { error: "invalid_file_name" }); return true; }
     try {
-      const config = JSON.parse(await readBody(req)) as AgentConfig;
+      const config = migrateAgentConfig(JSON.parse(await readBody(req)) as AgentConfig);
       const issues = validateAgentConfig(config);
       if (issues.length) { json(res, 422, { valid: false, issues }); return true; }
       await saveConfig(file, config);

@@ -1,4 +1,4 @@
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
+import type { AgentConfig, ChannelDeliveryReceipt, ChannelDeliveryStatus, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
 
 export class ConversationConflictError extends Error {
   constructor() {
@@ -31,6 +31,9 @@ export interface PlatformStorePort {
   isEventProcessed(externalMessageId: string): Promise<boolean>;
   markEventProcessed(externalMessageId: string, ttlSeconds?: number): Promise<void>;
   markEventDelivered(externalMessageId: string, deliveredAt?: string): Promise<void>;
+  recordOutboundReceipt(externalMessageId: string, receipt: ChannelDeliveryReceipt): Promise<void>;
+  updateOutboundStatus(status: ChannelDeliveryStatus): Promise<void>;
+  claimToolRateSlot(tenantId: string, toolName: string, subject: string, windowSeconds: number, maxCalls: number): Promise<boolean>;
 
   claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean>;
   putOtpChallenge(challenge: OtpChallenge): Promise<void>;

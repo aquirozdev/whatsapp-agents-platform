@@ -5,12 +5,14 @@ import { AwsSecretsManagerProvider } from "../adapters/aws/secrets-manager.js";
 import { AwsSqsTurnDispatcher } from "../adapters/aws/sqs-dispatcher.js";
 import { verifyMetaSignature } from "../core/security.js";
 import { log } from "../core/logger.js";
+import { AwsCloudWatchObservability } from "../adapters/aws/cloudwatch-observability.js";
 
 const store = new PlatformStore();
 const secrets = new AwsSecretsManagerProvider();
 const whatsapp = new MetaWhatsAppChannel(secrets);
 const queueUrl = process.env.QUEUE_URL ?? "";
 const dispatcher = queueUrl ? new AwsSqsTurnDispatcher(queueUrl) : undefined;
+const observability = new AwsCloudWatchObservability();
 
 function response(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
   return { statusCode, headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) };
@@ -42,6 +44,12 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   const signature = event.headers["x-hub-signature-256"];
   if (!verifyMetaSignature(rawBody, signature, appSecret)) return response(401, { error: "invalid_signature" });
 
+  const deliveryStatuses = whatsapp.parseDeliveryStatuses?.(rawBody) ?? [];
+  for (const status of deliveryStatuses) {
+    await store.updateOutboundStatus(status);
+    observability.metric({ name: status.status === "failed" ? "OutboundFailed" : "OutboundStatus", value: 1, dimensions: { Channel: "whatsapp", Status: status.status } });
+  }
+
   if (!dispatcher) return response(500, { error: "queue_not_configured" });
   const parsedMessages = whatsapp.parseInbound(rawBody);
   for (const message of parsedMessages) {
@@ -51,10 +59,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       continue;
     }
     const envelope = whatsapp.toEnvelope(tenant, message);
+    observability.metric({ name: "InboundAccepted", value: 1, dimensions: { Channel: "whatsapp" } });
     await dispatcher.dispatch(envelope, {
       orderingKey: `${tenant.tenantId}:${message.userId}`,
       dedupeKey: message.externalMessageId,
     });
   }
-  return response(200, { accepted: parsedMessages.length });
+  return response(200, { accepted: parsedMessages.length, deliveryStatuses: deliveryStatuses.length });
 }

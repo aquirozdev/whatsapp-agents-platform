@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "tenantId": "customer-secure",
   "displayName": "Customer Secure",
   "enabled": true,
@@ -10,7 +11,9 @@
     "sessionTtlSeconds": 900,
     "maxAttempts": 5,
     "requestCooldownSeconds": 60,
-    "allowedChannels": ["email"]
+    "allowedChannels": [
+      "email"
+    ]
   },
   "tools": [
     {
@@ -21,11 +24,24 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "channel": { "type": "string", "enum": ["email"] },
-          "destination": { "type": "string" },
-          "subjectId": { "type": "string" }
+          "channel": {
+            "type": "string",
+            "enum": [
+              "email"
+            ]
+          },
+          "destination": {
+            "type": "string"
+          },
+          "subjectId": {
+            "type": "string"
+          }
         },
-        "required": ["channel", "destination", "subjectId"],
+        "required": [
+          "channel",
+          "destination",
+          "subjectId"
+        ],
         "additionalProperties": false
       }
     },
@@ -37,10 +53,17 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "challengeId": { "type": "string" },
-          "code": { "type": "string" }
+          "challengeId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
         },
-        "required": ["challengeId", "code"],
+        "required": [
+          "challengeId",
+          "code"
+        ],
         "additionalProperties": false
       }
     },
@@ -54,15 +77,21 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "customerId": { "type": "string" }
+          "customerId": {
+            "type": "string"
+          }
         },
-        "required": ["customerId"],
+        "required": [
+          "customerId"
+        ],
         "additionalProperties": false
       },
       "http": {
         "method": "GET",
         "url": "https://api.example.invalid/customers/{{customerId}}",
-        "allowedHosts": ["api.example.invalid"],
+        "allowedHosts": [
+          "api.example.invalid"
+        ],
         "timeoutMs": 8000,
         "maxResponseBytes": 32768
       }
@@ -73,7 +102,10 @@
       "id": "private_lookup",
       "name": "Private lookup",
       "description": "Verify a customer by email OTP and retrieve private data.",
-      "triggerExamples": ["quiero consultar mis datos", "quiero ver mi información"],
+      "triggerExamples": [
+        "quiero consultar mis datos",
+        "quiero ver mi información"
+      ],
       "sessionTtlSeconds": 600,
       "steps": [
         {
@@ -82,7 +114,10 @@
           "field": "customerId",
           "prompt": "Ingresa tu identificador de cliente.",
           "transform": "trim",
-          "validation": { "minLength": 1, "maxLength": 64 }
+          "validation": {
+            "minLength": 1,
+            "maxLength": 64
+          }
         },
         {
           "id": "email",
@@ -90,7 +125,10 @@
           "field": "email",
           "prompt": "Ingresa el correo registrado.",
           "transform": "trim",
-          "validation": { "minLength": 5, "maxLength": 254 }
+          "validation": {
+            "minLength": 5,
+            "maxLength": 254
+          }
         },
         {
           "id": "otp",
@@ -114,7 +152,9 @@
           "id": "lookup",
           "type": "tool",
           "tool": "lookup_private_data",
-          "input": { "customerId": "{{customerId}}" },
+          "input": {
+            "customerId": "{{customerId}}"
+          },
           "saveAs": "result"
         },
         {

@@ -25,10 +25,21 @@ export interface ModelRequest {
   temperature?: number;
 }
 
+export interface ModelUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ModelResponse {
   message: ModelMessage;
   text: string;
   toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+  usage?: ModelUsage;
+  finishReason?: string;
+  providerRequestId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ModelCapabilities {

@@ -52,18 +52,29 @@ same runtime
 
 Git is enough for configuration history and review for many deployments. Customer secrets stay in Secrets Manager, never in JSON.
 
+## P0/P1 hardening — implemented
+
+- portable observability contract with CloudWatch EMF metrics and structured spans
+- normalized model/provider and tool error semantics
+- channel delivery receipts plus WhatsApp sent/delivered/read/failed reconciliation
+- schema-versioned tenant configuration, migrations and secret-safe diffs
+- adapter contract tests and expanded AWS adapter integration coverage
+- rich inbound channel content and WhatsApp media/interactive/template outbound support
+- deterministic workflow rich-message primitive
+- safe bounded HTTP retries only for idempotent operations
+- distributed per-tool quotas using the existing state store
+- optional Lambda canary deployments with CloudWatch alarm rollback
+- staging and production deployment scripts
+
 ## Next improvements that preserve simplicity
 
 Prioritize these when a concrete integration needs them:
 
-- a second model adapter as a portability contract test (OpenAI, Anthropic direct or Vertex)
 - more reusable connector templates (REST/SOAP/GraphQL)
-- richer WhatsApp outbound messages (templates, buttons, lists, media)
 - optional `search_knowledge` tool behind a small KnowledgeProvider interface
 - local conversation inspection/export tooling
 - deployment presets for shared vs dedicated AWS accounts
 - a second cloud deployment adapter only when a contracted customer requires it
-- stronger per-tool scopes/rate limits
 - PII redaction hooks
 
 These are adapters/modules, not new always-on services.

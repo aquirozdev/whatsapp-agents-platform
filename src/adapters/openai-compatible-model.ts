@@ -1,5 +1,6 @@
 import type { SecretProvider } from "../ports/secrets.js";
 import type { ModelContent, ModelMessage, ModelProvider, ModelRequest, ModelResponse } from "../ports/model.js";
+import { modelErrorFromHttp, modelTimeoutError, ModelProviderError } from "../core/errors.js";
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -77,7 +78,9 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     const apiKey = await this.secrets.get(request.model.apiKeySecret);
     const baseUrl = (request.model.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -98,7 +101,11 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         })) : undefined,
       }),
       signal: AbortSignal.timeout(60_000),
-    });
+      });
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw modelTimeoutError();
+      throw new ModelProviderError(error instanceof Error ? error.message : "OpenAI-compatible request failed.", "MODEL_UNAVAILABLE", "unavailable", true);
+    }
 
     const payload = await response.json() as {
       choices?: Array<{
@@ -108,10 +115,15 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         };
       }>;
       error?: { message?: string };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+      id?: string;
     };
 
     if (!response.ok) {
-      throw new Error(`OpenAI-compatible model request failed (${response.status}): ${payload.error?.message ?? "unknown error"}`);
+      throw modelErrorFromHttp(
+        response.status,
+        `OpenAI-compatible model request failed (${response.status}): ${payload.error?.message ?? "unknown error"}`,
+      );
     }
 
     const message = payload.choices?.[0]?.message;
@@ -139,6 +151,14 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       message: { role: "assistant", content },
       text,
       toolCalls,
+      usage: {
+        inputTokens: payload.usage?.prompt_tokens,
+        outputTokens: payload.usage?.completion_tokens,
+        cachedInputTokens: payload.usage?.prompt_tokens_details?.cached_tokens,
+        totalTokens: payload.usage?.total_tokens,
+      },
+      finishReason: undefined,
+      providerRequestId: payload.id,
     };
   }
 }

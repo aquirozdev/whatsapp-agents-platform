@@ -6,11 +6,11 @@ The platform is intentionally customer- and provider-agnostic: customer behavior
 
 ## What is included
 
-- Official Meta WhatsApp Cloud API webhook + outbound text/document messages.
+- Official Meta WhatsApp Cloud API webhook with text/media/interactive inbound normalization, rich outbound messages, delivery receipts and status reconciliation.
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
 - Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock and OpenAI-compatible APIs are included adapters.
-- Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
+- Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema validation, safe idempotent retries and per-tool distributed quotas.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
 - Durable versioned consent records.
@@ -25,7 +25,7 @@ The platform is intentionally customer- and provider-agnostic: customer behavior
 - DynamoDB state, audit, OTP and processed-event dedupe through a storage port.
 - Logical secret references; AWS Secrets Manager is the first secret adapter.
 - AWS CDK infrastructure in TypeScript, with API access logs, detailed metrics and stage throttling.
-- Config validation, architecture-boundary tests, unit tests, Floci-backed AWS adapter integration tests, CI and OpenAPI.
+- Versioned config migration/diff tooling, adapter contract tests, architecture-boundary tests, unit tests, Floci-backed AWS adapter integration tests, CI and OpenAPI.
 - Zero-framework local admin for editing, validating and publishing tenant JSON.
 
 ## Runtime architecture
@@ -282,3 +282,9 @@ See [Portability](docs/PORTABILITY.md), [Testing](docs/TESTING.md), [Roadmap](do
 ## License
 
 MIT.
+
+## Hardening and release profiles
+
+Tenant configuration is schema-versioned. Use `npm run migrate:tenant -- tenant.json --write` to upgrade a file and `npm run diff:tenant -- old.json new.json` for a secret-safe review summary.
+
+AWS deployments default to `deploymentStrategy=direct`. Staging/production can opt into Lambda aliases + CodeDeploy canary traffic shifting with alarm rollback using `deploymentStrategy=canary10`, or the provided `deploy:staging` / `deploy:production` scripts. The runtime service count remains unchanged.

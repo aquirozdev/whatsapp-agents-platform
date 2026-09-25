@@ -19,12 +19,17 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:contracts
       - run: npm run validate:tenant -- templates/minimal.json
       - run: npm run validate:tenant -- templates/whatsapp-support.json
       - run: npm run validate:tenant -- templates/secure-http-workflow.json
       - run: npm run validate:tenant -- examples/tenant.example.json
       - run: npm run validate:tenant -- examples/financial-institution.reference.json
-      - run: npm run synth -- -c stage=test -c defaultModelProvider=bedrock -c defaultModelId=dummy-model -c apiRateLimit=100 -c apiBurstLimit=200
+      - run: npm run synth -- -c stage=test -c defaultModelProvider=bedrock -c defaultModelId=dummy-model -c apiRateLimit=100 -c apiBurstLimit=200 -c deploymentStrategy=direct
+        env:
+          CDK_DEFAULT_ACCOUNT: "111111111111"
+          CDK_DEFAULT_REGION: us-east-1
+      - run: npm run synth -- -c stage=staging -c defaultModelProvider=bedrock -c defaultModelId=dummy-model -c deploymentStrategy=canary10
         env:
           CDK_DEFAULT_ACCOUNT: "111111111111"
           CDK_DEFAULT_REGION: us-east-1

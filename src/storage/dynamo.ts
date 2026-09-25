@@ -9,10 +9,11 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
+import type { AgentConfig, ChannelDeliveryReceipt, ChannelDeliveryStatus, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
 import type { PlatformStorePort } from "../ports/store.js";
 import { ConversationConflictError } from "../ports/store.js";
 import { awsClientOptions } from "../adapters/aws/client-options.js";
+import { migrateAgentConfig } from "../core/config-migrations.js";
 
 const defaultTableName = process.env.TABLE_NAME ?? "WhatsappAgentsPlatform";
 const defaultClient = DynamoDBDocumentClient.from(new DynamoDBClient(awsClientOptions()), {
@@ -34,7 +35,8 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `TENANT#${tenantId}`, sk: "CONFIG" },
     }));
-    return result.Item?.config as AgentConfig | undefined;
+    const config = result.Item?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async getTenantVersion(tenantId: string, version: number): Promise<AgentConfig | undefined> {
@@ -42,7 +44,8 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `TENANT#${tenantId}`, sk: `CONFIG#v${version}` },
     }));
-    return result.Item?.config as AgentConfig | undefined;
+    const config = result.Item?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async getTenantByWhatsAppPhoneNumberId(phoneNumberId: string): Promise<AgentConfig | undefined> {
@@ -53,7 +56,8 @@ export class PlatformStore implements PlatformStorePort {
       ExpressionAttributeValues: { ":pk": `WA_PHONE#${phoneNumberId}` },
       Limit: 1,
     }));
-    return result.Items?.[0]?.config as AgentConfig | undefined;
+    const config = result.Items?.[0]?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async putTenant(config: AgentConfig): Promise<number> {
@@ -289,7 +293,14 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
     }));
-    if (result.Item?.event) return result.Item.event as ProcessedEventRecord;
+    if (result.Item?.event) {
+      const event = result.Item.event as ProcessedEventRecord;
+      return {
+        ...event,
+        acceptedOutboundCount: Number(result.Item.acceptedOutboundCount ?? event.acceptedOutboundCount ?? 0),
+        deliveryStatus: (result.Item.deliveryStatus as ChannelDeliveryStatus | undefined) ?? event.deliveryStatus,
+      };
+    }
     if (result.Item) {
       return {
         externalMessageId,
@@ -333,6 +344,128 @@ export class PlatformStore implements PlatformStorePort {
       ConditionExpression: "attribute_exists(pk)",
       ExpressionAttributeValues: { ":deliveredAt": deliveredAt },
     }));
+  }
+
+  async recordOutboundReceipt(externalMessageId: string, receipt: ChannelDeliveryReceipt): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    if (receipt.providerMessageId) {
+      try {
+        await this.client.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+                UpdateExpression: "SET acceptedOutboundCount = if_not_exists(acceptedOutboundCount, :zero) + :one",
+                ConditionExpression: "attribute_exists(pk)",
+                ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: {
+                  pk: `DELIVERY#${receipt.providerMessageId}`,
+                  sk: "DELIVERY",
+                  entity: "delivery_index",
+                  externalMessageId,
+                  receipt,
+                  deliveryStatus: {
+                    providerMessageId: receipt.providerMessageId,
+                    status: receipt.status,
+                    occurredAt: receipt.acceptedAt,
+                  },
+                  ttl: now + 7 * 86400,
+                },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+          ],
+        }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "TransactionCanceledException") {
+          const existing = await this.client.send(new GetCommand({
+            TableName: this.tableName,
+            Key: { pk: `DELIVERY#${receipt.providerMessageId}`, sk: "DELIVERY" },
+          }));
+          if (existing.Item?.externalMessageId === externalMessageId) return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET acceptedOutboundCount = if_not_exists(acceptedOutboundCount, :zero) + :one",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
+    }));
+  }
+
+  async updateOutboundStatus(status: ChannelDeliveryStatus): Promise<void> {
+    const index = await this.client.send(new GetCommand({
+      TableName: this.tableName,
+      Key: { pk: `DELIVERY#${status.providerMessageId}`, sk: "DELIVERY" },
+    }));
+    const externalMessageId = index.Item?.externalMessageId as string | undefined;
+    if (!externalMessageId) return;
+
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `DELIVERY#${status.providerMessageId}`, sk: "DELIVERY" },
+      UpdateExpression: "SET deliveryStatus = :deliveryStatus",
+      ExpressionAttributeValues: { ":deliveryStatus": status },
+    }));
+
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET deliveryStatus = :deliveryStatus",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":deliveryStatus": status },
+    }));
+
+    if (status.status === "delivered" || status.status === "read") {
+      await this.markEventDelivered(externalMessageId, status.occurredAt);
+    }
+  }
+
+  async claimToolRateSlot(
+    tenantId: string,
+    toolName: string,
+    subject: string,
+    windowSeconds: number,
+    maxCalls: number,
+  ): Promise<boolean> {
+    const now = Math.floor(Date.now() / 1000);
+    const bucket = Math.floor(now / windowSeconds);
+    const ttl = (bucket + 1) * windowSeconds + 3600;
+    try {
+      await this.client.send(new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          pk: `TENANT#${tenantId}#TOOL_RATE#${toolName}#${subject}`,
+          sk: `WINDOW#${bucket}`,
+        },
+        UpdateExpression: "SET #calls = if_not_exists(#calls, :zero) + :one, #ttl = :ttl, #entity = :entity",
+        ConditionExpression: "attribute_not_exists(#calls) OR #calls < :maxCalls",
+        ExpressionAttributeNames: { "#calls": "calls", "#ttl": "ttl", "#entity": "entity" },
+        ExpressionAttributeValues: {
+          ":zero": 0,
+          ":one": 1,
+          ":ttl": ttl,
+          ":entity": "tool_rate_limit",
+          ":maxCalls": maxCalls,
+        },
+      }));
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") return false;
+      throw error;
+    }
   }
 
   async claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean> {
