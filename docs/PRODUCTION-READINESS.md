@@ -22,7 +22,7 @@ Implemented in the platform core:
 - idempotency header propagation for side effects;
 - SQS FIFO ordering and DLQ;
 - DynamoDB PITR;
-- event deduplication after successful processing;
+- durable prepared/completed turn records so delivery retries do not re-run completed business logic;
 - Secrets Manager;
 - human handoff state;
 - API Gateway access logs, detailed metrics and stage throttling;
@@ -96,7 +96,7 @@ Do not increase Lambda timeout and assume the HTTP client can wait longer than A
 
 The WhatsApp path is serialized per tenant + user through the FIFO message group.
 
-The synchronous Web/API path does not pass through SQS. Callers must serialize requests for the same `conversationId` in v1; simultaneous writes to the same conversation can otherwise race and the last persisted state can win. If a web/mobile client needs concurrent or bursty turns on the same conversation, route those turns through an asynchronous ordered path before production.
+The synchronous Web/API path does not pass through SQS, but conversation writes use optimistic revision checks. Concurrent turns for the same conversation return a retryable conflict instead of silently overwriting state. Clients that need bursty ordered turns should still use an asynchronous ordered adapter.
 
 ## WAF and edge controls
 
@@ -155,7 +155,7 @@ The repository documents what to measure; production customers should choose thr
 
 These are intentionally not hidden:
 
-- tenant configuration uses JSON plus a localhost-only admin rather than a hosted multi-user portal;
+- tenant configuration uses versioned JSON plus a localhost-only admin rather than a hosted multi-user portal;
 - no operator inbox UI yet;
 - API-key authentication is the current Web/API application mechanism;
 - no hosted OIDC/SSO/RBAC control plane by default;
