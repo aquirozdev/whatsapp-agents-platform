@@ -92,6 +92,12 @@ Slow processes should use one of these patterns:
 
 Do not increase Lambda timeout and assume the HTTP client can wait longer than API Gateway.
 
+## Conversation concurrency
+
+The WhatsApp path is serialized per tenant + user through the FIFO message group.
+
+The synchronous Web/API path does not pass through SQS. Callers must serialize requests for the same `conversationId` in v1; simultaneous writes to the same conversation can otherwise race and the last persisted state can win. If a web/mobile client needs concurrent or bursty turns on the same conversation, route those turns through an asynchronous ordered path before production.
+
 ## WAF and edge controls
 
 The default stack uses API Gateway HTTP API because it is simpler and lower cost.
