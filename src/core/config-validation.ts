@@ -11,6 +11,8 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   if (!config.tenantId?.trim()) issues.push({ path: "tenantId", message: "tenantId is required." });
   if (!config.displayName?.trim()) issues.push({ path: "displayName", message: "displayName is required." });
   if (!config.systemPrompt?.trim()) issues.push({ path: "systemPrompt", message: "systemPrompt is required." });
+  validateWhatsApp(config, issues);
+  validateOtp(config, issues);
 
   const tools = new Map<string, ToolBinding>();
   for (const [i, tool] of (config.tools ?? []).entries()) {
@@ -56,6 +58,40 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   return issues;
 }
 
+function validateWhatsApp(config: AgentConfig, issues: ConfigIssue[]): void {
+  const whatsapp = config.whatsapp;
+  if (!whatsapp) return;
+  if (!/^\d{5,32}$/.test(whatsapp.phoneNumberId)) {
+    issues.push({ path: "whatsapp.phoneNumberId", message: "WhatsApp phoneNumberId must be a numeric Meta phone number ID." });
+  }
+  if (!/^v\d+\.\d+$/.test(whatsapp.graphApiVersion)) {
+    issues.push({ path: "whatsapp.graphApiVersion", message: "graphApiVersion must look like v23.0." });
+  }
+  if (!whatsapp.accessTokenSecretArn?.trim()) {
+    issues.push({ path: "whatsapp.accessTokenSecretArn", message: "WhatsApp access token secret ARN is required." });
+  }
+  if (whatsapp.sendTimeoutMs !== undefined && (whatsapp.sendTimeoutMs < 1000 || whatsapp.sendTimeoutMs > 30000)) {
+    issues.push({ path: "whatsapp.sendTimeoutMs", message: "sendTimeoutMs must be between 1000 and 30000 milliseconds." });
+  }
+}
+
+function validateOtp(config: AgentConfig, issues: ConfigIssue[]): void {
+  const otp = config.otp;
+  if (!otp) return;
+  if (otp.codeTtlSeconds !== undefined && (otp.codeTtlSeconds < 30 || otp.codeTtlSeconds > 900)) {
+    issues.push({ path: "otp.codeTtlSeconds", message: "codeTtlSeconds must be between 30 and 900." });
+  }
+  if (otp.sessionTtlSeconds !== undefined && (otp.sessionTtlSeconds < 60 || otp.sessionTtlSeconds > 86400)) {
+    issues.push({ path: "otp.sessionTtlSeconds", message: "sessionTtlSeconds must be between 60 and 86400." });
+  }
+  if (otp.maxAttempts !== undefined && (!Number.isInteger(otp.maxAttempts) || otp.maxAttempts < 1 || otp.maxAttempts > 10)) {
+    issues.push({ path: "otp.maxAttempts", message: "maxAttempts must be an integer between 1 and 10." });
+  }
+  if (otp.requestCooldownSeconds !== undefined && (otp.requestCooldownSeconds < 0 || otp.requestCooldownSeconds > 3600)) {
+    issues.push({ path: "otp.requestCooldownSeconds", message: "requestCooldownSeconds must be between 0 and 3600." });
+  }
+}
+
 function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): void {
   const http = tool.http!;
   const marker = http.url.indexOf("://");
@@ -76,7 +112,12 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
   } catch {
     issues.push({ path: `${path}.http.url`, message: "HTTP tool URL is invalid." });
   }
-  if (http.maxResponseBytes !== undefined && http.maxResponseBytes <= 0) issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero." });
+  if (http.timeoutMs !== undefined && (http.timeoutMs < 100 || http.timeoutMs > 60000)) {
+    issues.push({ path: `${path}.http.timeoutMs`, message: "timeoutMs must be between 100 and 60000 milliseconds." });
+  }
+  if (http.maxResponseBytes !== undefined && (http.maxResponseBytes <= 0 || http.maxResponseBytes > 5 * 1024 * 1024)) {
+    issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero and at most 5 MiB." });
+  }
 }
 
 function validateStep(step: WorkflowStep, path: string, stepIds: Set<string>, tools: Map<string, ToolBinding>, issues: ConfigIssue[]): void {
