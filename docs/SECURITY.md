@@ -29,7 +29,7 @@ Tools can be marked:
 
 or `both`.
 
-For sensitive financial, certificate, claims or transaction tools, prefer `workflow`. Workflow-only tools are never advertised to Bedrock in free agent mode.
+For sensitive financial, certificate, claims or transaction tools, prefer `workflow`. Workflow-only tools are never advertised to the selected model provider in free agent mode.
 
 This is a major security boundary: the model can route to a configured workflow, but it cannot freely call workflow-only transactional integrations.
 
@@ -141,7 +141,7 @@ The platform forwards the inbound message ID in that header.
 
 The upstream service must implement idempotency semantics if duplicate execution would be harmful.
 
-The platform marks an inbound event as processed only **after** successful execution and outbound delivery, so SQS retries are not suppressed by premature deduplication.
+Conversation state and the processed inbound result are persisted in one conditional DynamoDB transaction before outbound delivery. If delivery fails, a retry replays the saved outbound payload instead of re-running the model/workflow/tools. The delivery marker is persisted separately. This materially reduces duplicate transactional execution; external side effects must still implement the configured idempotency key because no HTTP integration can guarantee exactly-once execution across crash boundaries.
 
 ## Secrets
 
@@ -153,7 +153,7 @@ Never place secrets in tenant JSON or Git:
 - OTP HMAC secret,
 - private signing keys.
 
-Reference Secrets Manager ARNs.
+Tenant specs should reference logical secret keys such as `{ "key": "tenant/customer/core-api-auth" }`. The AWS deployment binds those keys to Secrets Manager identifiers; other deployment adapters may resolve them differently. Legacy ARN strings remain supported during migration.
 
 HTTP tools support `secretHeaders`:
 
@@ -171,7 +171,7 @@ Store the complete desired header value in the secret.
 
 Conversation state stores the latest 30 free-form text messages plus workflow state.
 
-Messages handled inside an active transactional workflow are not copied into Bedrock chat history. Workflow data is cleared on completion, cancellation or expiry by default.
+Messages handled inside an active transactional workflow are not copied into free-form model history. Workflow data is cleared on completion, cancellation or expiry by default.
 
 Do not persist or log:
 

@@ -12,12 +12,26 @@ The platform separates eight concepts:
 
 1. **Tenant** — customer configuration and credentials.
 2. **Channel** — WhatsApp or Web/API transport.
-3. **Agent** — conversational reasoning and workflow routing through Bedrock.
+3. **Agent** — conversational reasoning and workflow routing through a `ModelProvider`.
 4. **Workflow** — deterministic transactional sequence.
 5. **Policy** — deterministic authorization checks outside the model.
 6. **Tool** — customer/system action executed by application code.
 7. **Capability** — metadata grouping reusable tools/workflows for product configuration.
 8. **Conversation** — history, verification, workflow and handoff state.
+
+## Provider-neutral boundary
+
+Business semantics live in `core`, `workflows`, `tools` and `ports`. Those layers do not import cloud SDKs. Deployment-specific implementations live behind ports:
+
+| Port | AWS adapter today | Required semantic |
+|---|---|---|
+| `ModelProvider` | Bedrock Converse | messages + tool calls/results |
+| `PlatformStorePort` | DynamoDB | durable state, conditional revisions, config versions |
+| `TurnDispatcher` | SQS FIFO | at-least-once delivery + per-conversation serialization |
+| `SecretProvider` | Secrets Manager | logical secret resolution |
+| `OtpDeliveryPort` | SNS / SES | delivery only; verification rules stay in the runtime |
+
+A future cloud adapter may use different managed services as long as it preserves these semantics.
 
 ## AWS components
 
@@ -67,7 +81,9 @@ Meta Send Message API
 
 The event source uses `batchSize: 1`. This deliberately simplifies FIFO failure semantics: a failed record cannot allow a later record from the same invocation to overtake it, while Lambda can still scale across different FIFO message groups.
 
-A message is marked processed **after** runtime execution and outbound delivery succeeds. This lets SQS retries actually retry failed work; marking before execution would incorrectly suppress retries.
+The conversation revision and a durable processed-event record (including outbound messages) are committed atomically. Outbound delivery happens afterward. If delivery fails, a retry replays the persisted outbound payload instead of re-running the model, workflow or transactional tools. Delivery is then marked separately.
+
+This removes the dangerous retry path where the same inbound turn could advance a workflow twice. As with any external HTTP messaging API, a crash after the provider accepts a message but before the delivery marker is persisted can still produce an ambiguous delivery; transactional customer APIs must therefore continue to honor idempotency keys.
 
 ## Web/API path
 
@@ -88,8 +104,9 @@ Conversation has active workflow?
   yes    no
    |     |
    v     v
-Workflow  Bedrock Converse
+Workflow  ModelProvider
 Runtime       |
+          (Bedrock adapter today)
    |          +-- answer normally
    |          +-- call agent-exposed tool
    |          `-- call start_workflow
@@ -102,9 +119,9 @@ Runtime       |
 
 ### Agent mode
 
-Bedrock receives only tools whose `exposure` is `agent` or `both`, plus the platform-reserved `start_workflow` tool when workflows exist.
+The selected `ModelProvider` receives only tools whose `exposure` is `agent` or `both`, plus the platform-reserved `start_workflow` tool when workflows exist.
 
-Amazon Bedrock client-side tool use means the model requests a tool and application code executes it. The model never receives credentials and never performs the HTTP call itself.
+The model requests tools; application code executes them. The model never receives credentials and never performs the upstream HTTP call itself. Bedrock Converse is the current AWS model adapter, but the orchestration loop is provider-neutral.
 
 ### Workflow mode
 
@@ -112,11 +129,11 @@ After `start_workflow`, the LLM is removed from the transaction path. User repli
 
 Workflow primitives are documented in [WORKFLOWS.md](WORKFLOWS.md).
 
-## Why direct Bedrock Converse
+## Why no general agent framework
 
-The platform needs model conversation, routing and client-side tool use. Converse already provides the model/tool protocol. The deterministic workflow runtime handles transactional sequencing without introducing a general agent framework or another runtime service.
+The platform only requires a portable messages + tool-calling contract for free-form conversation and routing. A small `ModelProvider` port is enough; provider adapters translate that contract to Bedrock, OpenAI, Vertex or another model API.
 
-A long-running external workflow engine can still be added later for multi-day approvals; it is not required for conversational transactions lasting minutes.
+The deterministic workflow runtime handles transactional sequencing without introducing another agent runtime. A long-running external workflow engine can still be added later for multi-day approvals; it is not required for conversational transactions lasting minutes.
 
 ## Tool boundary
 
@@ -144,8 +161,10 @@ HTTP tools support bounded timeouts, Secrets Manager headers and an optional ide
 
 | PK | SK | Entity |
 |---|---|---|
-| `TENANT#<tenantId>` | `CONFIG` | Tenant config, tools, workflows, capabilities |
-| `TENANT#<tenantId>#CONV#<channel>#<conversationId>` | `STATE` | Conversation + active workflow + verification |
+| `TENANT#<tenantId>` | `CONFIG` | Active tenant config pointer/snapshot |
+| `TENANT#<tenantId>` | `CONFIG#v<N>` | Immutable tenant config version |
+| `TENANT#<tenantId>#CONV#<channel>#<conversationId>` | `STATE` | Versioned conversation + active workflow + verification |
+| `TENANT#<tenantId>#CONV#<channel>#<conversationId>` | `LEASE` | Short lease for synchronous turn serialization |
 | `TENANT#<tenantId>#SUBJECT#<subjectId>` | `CONSENT#<policyId>#<version>` | Durable consent |
 | `TENANT#<tenantId>#OTP#<challengeId>` | `CHALLENGE` | Built-in OTP challenge |
 | `EVENT#<externalMessageId>` | `EVENT` | Successfully processed event |
@@ -158,7 +177,7 @@ gsi1pk = WA_PHONE#<phoneNumberId>
 gsi1sk = TENANT#<tenantId>
 ```
 
-Workflow state stays inside the conversation item, so no workflow database/service is added.
+Workflow state stays inside the conversation item, so no workflow database/service is added. Conversation writes use optimistic revisions. When a workflow starts it pins the active tenant `configVersion`, so publishing a new agent configuration cannot change an in-flight transaction.
 
 ## Multi-tenancy and dedicated mode
 
@@ -172,7 +191,9 @@ No domain-specific class or Lambda is required.
 - SQS retries worker failures.
 - DLQ receives a record after five failed receives.
 - FIFO batch size is 1 for simple ordering/failure behavior.
-- Event dedupe is persisted after success.
+- Conversation state + processed inbound result are committed atomically.
+- Failed outbound delivery replays the durable outbound result without re-running the transaction.
+- Event dedupe is durable.
 - Side-effecting HTTP tools can forward an idempotency key to the upstream API.
 - HTTP timeouts are bounded.
 - Bedrock tool rounds are bounded.
@@ -183,7 +204,7 @@ No domain-specific class or Lambda is required.
 The current boundaries support later addition of:
 
 - knowledge/RAG tools,
-- admin portal + config versioning,
+- admin portal,
 - human inbox,
 - OIDC/Cognito and RBAC,
 - customer-managed KMS keys,
@@ -191,3 +212,10 @@ The current boundaries support later addition of:
 - additional channels,
 - durable multi-day workflow engines,
 - immutable audit export.
+
+
+## Portability rule
+
+Cloud portability is implemented at semantic boundaries, not by pretending every cloud has equivalent products. For example, AWS uses SQS FIFO for per-conversation ordering; another deployment may implement the same `TurnDispatcher` serialization guarantee with a different primitive.
+
+See [PORTABILITY.md](PORTABILITY.md) and [TESTING.md](TESTING.md).

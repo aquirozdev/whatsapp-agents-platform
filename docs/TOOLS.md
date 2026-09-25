@@ -2,7 +2,7 @@
 
 Tools are the integration boundary between the generic platform and customer systems.
 
-Amazon Bedrock can request agent-exposed tools, while deterministic workflows can call workflow-exposed tools. Application code always executes the tool.
+The selected model provider can request agent-exposed tools, while deterministic workflows can call workflow-exposed tools. Application code always executes the tool.
 
 ## Tool binding
 
@@ -28,7 +28,7 @@ interface ToolBinding {
 }
 ```
 
-Tool names must be unique and match Bedrock's allowed tool-name format.
+Tool names must be unique and stay within the platform's portable tool-name format so they can be translated across model providers.
 
 `start_workflow` is reserved by the platform.
 
@@ -56,7 +56,7 @@ Use for sensitive or sequence-dependent actions:
 }
 ```
 
-Workflow-only tools are not included in the tool list sent to Bedrock.
+Workflow-only tools are not included in the tool list sent to the model provider.
 
 ### Both
 

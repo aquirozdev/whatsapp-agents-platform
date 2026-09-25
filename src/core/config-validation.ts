@@ -16,6 +16,27 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   else if (config.displayName.length > 120) issues.push({ path: "displayName", message: "displayName must be at most 120 characters." });
   if (!config.systemPrompt?.trim()) issues.push({ path: "systemPrompt", message: "systemPrompt is required." });
   else if (config.systemPrompt.length > 20000) issues.push({ path: "systemPrompt", message: "systemPrompt must be at most 20000 characters." });
+  if (config.model) {
+    if (!config.model.provider?.trim()) issues.push({ path: "model.provider", message: "model.provider is required when model is configured." });
+    if (!config.model.model?.trim()) issues.push({ path: "model.model", message: "model.model is required when model is configured." });
+    if (config.model.baseUrl) {
+      try {
+        const parsed = new URL(config.model.baseUrl);
+        if (parsed.protocol !== "https:") issues.push({ path: "model.baseUrl", message: "model.baseUrl must use HTTPS." });
+      } catch {
+        issues.push({ path: "model.baseUrl", message: "model.baseUrl is invalid." });
+      }
+    }
+    if (config.model.apiKeySecret && !config.model.apiKeySecret.key?.trim()) {
+      issues.push({ path: "model.apiKeySecret.key", message: "model.apiKeySecret.key is required." });
+    }
+    if (config.model.maxTokens !== undefined && (!Number.isInteger(config.model.maxTokens) || config.model.maxTokens < 1 || config.model.maxTokens > 100000)) {
+      issues.push({ path: "model.maxTokens", message: "model.maxTokens must be an integer between 1 and 100000." });
+    }
+    if (config.model.temperature !== undefined && (config.model.temperature < 0 || config.model.temperature > 2)) {
+      issues.push({ path: "model.temperature", message: "model.temperature must be between 0 and 2." });
+    }
+  }
 
   const configBytes = Buffer.byteLength(JSON.stringify(config), "utf8");
   if (configBytes > MAX_CONFIG_BYTES) {
@@ -31,6 +52,7 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
     if (RESERVED_TOOLS.has(tool.name)) issues.push({ path: `${path}.name`, message: `${tool.name} is reserved by the platform.` });
     if (tools.has(tool.name)) issues.push({ path: `${path}.name`, message: "Tool names must be unique." });
     tools.set(tool.name, tool);
+    validatePortableSchema(tool.inputSchema, `${path}.inputSchema`, issues);
     if (tool.verificationSubjectFrom && (tool.requiresVerification ?? "none") === "none") {
       issues.push({ path: `${path}.verificationSubjectFrom`, message: "verificationSubjectFrom requires requiresVerification." });
     }
@@ -77,8 +99,10 @@ function validateWhatsApp(config: AgentConfig, issues: ConfigIssue[]): void {
   if (!/^v\d+\.\d+$/.test(whatsapp.graphApiVersion)) {
     issues.push({ path: "whatsapp.graphApiVersion", message: "graphApiVersion must look like v23.0." });
   }
-  if (!whatsapp.accessTokenSecretArn?.trim()) {
-    issues.push({ path: "whatsapp.accessTokenSecretArn", message: "WhatsApp access token secret ARN is required." });
+  const portableSecret = whatsapp.accessTokenSecret?.key?.trim();
+  const legacySecret = whatsapp.accessTokenSecretArn?.trim();
+  if (!portableSecret && !legacySecret) {
+    issues.push({ path: "whatsapp.accessTokenSecret", message: "WhatsApp access token secret reference is required." });
   }
   if (whatsapp.sendTimeoutMs !== undefined && (whatsapp.sendTimeoutMs < 1000 || whatsapp.sendTimeoutMs > 30000)) {
     issues.push({ path: "whatsapp.sendTimeoutMs", message: "sendTimeoutMs must be between 1000 and 30000 milliseconds." });
@@ -128,6 +152,10 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
   if (http.maxResponseBytes !== undefined && (http.maxResponseBytes <= 0 || http.maxResponseBytes > 5 * 1024 * 1024)) {
     issues.push({ path: `${path}.http.maxResponseBytes`, message: "maxResponseBytes must be greater than zero and at most 5 MiB." });
   }
+  for (const [header, ref] of Object.entries(http.secretHeaders ?? {})) {
+    const key = typeof ref === "string" ? ref.trim() : ref?.key?.trim();
+    if (!key) issues.push({ path: `${path}.http.secretHeaders.${header}`, message: "Secret header reference must be a non-empty string or { key }." });
+  }
 }
 
 function validateStep(step: WorkflowStep, path: string, stepIds: Set<string>, tools: Map<string, ToolBinding>, issues: ConfigIssue[]): void {
@@ -154,4 +182,24 @@ function validateWorkflowTool(name: string, path: string, tools: Map<string, Too
   const tool = tools.get(name);
   if (!tool) return void issues.push({ path, message: `Unknown tool reference: ${name}.` });
   if (tool.exposure === "agent") issues.push({ path, message: `Tool ${name} is agent-only but referenced by a workflow.` });
+}
+
+const PORTABLE_SCHEMA_KEYS = new Set([
+  "type", "properties", "required", "additionalProperties", "enum", "items", "description",
+]);
+
+function validatePortableSchema(schema: unknown, path: string, issues: ConfigIssue[]): void {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const record = schema as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (!PORTABLE_SCHEMA_KEYS.has(key)) {
+      issues.push({ path: `${path}.${key}`, message: `Schema keyword "${key}" is outside the portable tool-schema subset.` });
+    }
+  }
+  if (record.properties && typeof record.properties === "object" && !Array.isArray(record.properties)) {
+    for (const [key, value] of Object.entries(record.properties as Record<string, unknown>)) {
+      validatePortableSchema(value, `${path}.properties.${key}`, issues);
+    }
+  }
+  validatePortableSchema(record.items, `${path}.items`, issues);
 }

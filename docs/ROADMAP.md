@@ -6,7 +6,8 @@ The default rule is **keep the platform small**. Add a service only when a real 
 
 - official WhatsApp Cloud API
 - Web/API chat
-- Bedrock Converse
+- provider-neutral `ModelProvider` orchestration with Bedrock adapter
+- provider-neutral storage, dispatch, secrets and OTP-delivery ports
 - multi-tenancy
 - deterministic transactional workflows
 - agent/workflow tool exposure
@@ -18,11 +19,14 @@ The default rule is **keep the platform small**. Add a service only when a real 
 - human handoff primitive
 - audit/state
 - SQS FIFO + DLQ
-- DynamoDB + PITR
-- Secrets Manager
-- serverless CDK
+- immutable tenant configuration versions + workflow version pinning
+- optimistic conversation revisions + synchronous conversation leases
+- DynamoDB + PITR adapter
+- Secrets Manager adapter
+- SQS FIFO dispatcher adapter
+- serverless AWS CDK deployment
 - API access logs, metrics and throttling
-- CI and tenant validation
+- CI, architecture-boundary tests, Floci adapter integration tests and tenant validation
 - reusable JSON templates
 - localhost-only JSON admin/publisher
 
@@ -52,11 +56,13 @@ Git is enough for configuration history and review for many deployments. Custome
 
 Prioritize these when a concrete integration needs them:
 
+- a second model adapter as a portability contract test (OpenAI, Anthropic direct or Vertex)
 - more reusable connector templates (REST/SOAP/GraphQL)
 - richer WhatsApp outbound messages (templates, buttons, lists, media)
 - optional `search_knowledge` tool behind a small KnowledgeProvider interface
 - local conversation inspection/export tooling
 - deployment presets for shared vs dedicated AWS accounts
+- a second cloud deployment adapter only when a contracted customer requires it
 - stronger per-tool scopes/rate limits
 - PII redaction hooks
 

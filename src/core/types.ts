@@ -1,7 +1,20 @@
-export type ChannelKind = "whatsapp" | "web";
+export type ChannelKind = "whatsapp" | "web" | (string & {});
 export type ConversationMode = "ai" | "human";
 export type VerificationLevel = "none" | "otp";
 export type ToolExposure = "agent" | "workflow" | "both";
+
+export interface SecretRef {
+  key: string;
+}
+
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  apiKeySecret?: SecretRef;
+  maxTokens?: number;
+  temperature?: number;
+}
 
 export interface JsonSchema {
   type?: string;
@@ -9,7 +22,8 @@ export interface JsonSchema {
   required?: string[];
   additionalProperties?: boolean;
   enum?: unknown[];
-  [key: string]: unknown;
+  items?: JsonSchema;
+  description?: string;
 }
 
 export interface ConsentRequirement {
@@ -22,7 +36,7 @@ export interface HttpToolConfig {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   url: string;
   headers?: Record<string, string>;
-  secretHeaders?: Record<string, string>;
+  secretHeaders?: Record<string, string | SecretRef>;
   bodyTemplate?: unknown;
   timeoutMs?: number;
   idempotencyHeader?: string;
@@ -34,7 +48,7 @@ export interface HttpToolConfig {
 
 export interface ToolBinding {
   name: string;
-  kind: "builtin" | "http";
+  kind: "builtin" | "http" | (string & {});
   description: string;
   inputSchema: JsonSchema;
   exposure?: ToolExposure;
@@ -42,11 +56,14 @@ export interface ToolBinding {
   verificationSubjectFrom?: string;
   requiresConsents?: ConsentRequirement[];
   http?: HttpToolConfig;
+  config?: Record<string, unknown>;
 }
 
 export interface WhatsAppChannelConfig {
   phoneNumberId: string;
-  accessTokenSecretArn: string;
+  accessTokenSecret?: SecretRef;
+  /** @deprecated Prefer accessTokenSecret for provider-neutral tenant specs. */
+  accessTokenSecretArn?: string;
   graphApiVersion: string;
   sendTimeoutMs?: number;
 }
@@ -237,7 +254,10 @@ export interface AgentConfig {
   displayName: string;
   enabled: boolean;
   systemPrompt: string;
+  model?: ModelConfig;
+  /** @deprecated Kept for backwards compatibility. Prefer model.provider + model.model. */
   modelId?: string;
+  configVersion?: number;
   maxToolRounds?: number;
   apiKeyHash?: string;
   whatsapp?: WhatsAppChannelConfig;
@@ -269,6 +289,8 @@ export interface ConversationState {
   messages: ChatMessage[];
   verification: VerificationState;
   workflow?: WorkflowState;
+  configVersion?: number;
+  revision?: number;
   updatedAt: string;
 }
 
@@ -280,7 +302,10 @@ export interface InboundEnvelope {
   text: string;
   externalMessageId: string;
   receivedAt: string;
+  replyTarget?: { value: string; kind?: string };
+  /** @deprecated Prefer replyTarget. */
   replyTo?: string;
+  /** @deprecated Prefer replyTarget.kind. */
   replyToType?: "phone" | "whatsapp_user_id";
   metadata?: Record<string, unknown>;
 }
@@ -332,4 +357,16 @@ export interface ConsentRecord {
   acceptedAt: string;
   channel: ChannelKind;
   conversationId: string;
+}
+
+
+export interface ProcessedEventRecord {
+  externalMessageId: string;
+  tenantId: string;
+  channel: ChannelKind;
+  configVersion?: number;
+  outbound: OutboundMessage[];
+  processedAt: string;
+  deliveredAt?: string;
+  expiresAt?: number;
 }

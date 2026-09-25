@@ -1,5 +1,5 @@
 import type { HttpToolConfig, ToolExecutionResult } from "../core/types.js";
-import { getSecret } from "../providers/secrets.js";
+import type { SecretProvider } from "../ports/secrets.js";
 import { getPath, renderValue } from "../core/template.js";
 
 function renderUrl(template: string, input: Record<string, unknown>): string {
@@ -33,12 +33,13 @@ function validateDestination(config: HttpToolConfig, renderedUrl: string): URL {
 export async function executeHttpTool(
   config: HttpToolConfig,
   input: Record<string, unknown>,
+  secrets: SecretProvider,
   externalMessageId?: string,
 ): Promise<ToolExecutionResult> {
   try {
     const url = validateDestination(config, renderUrl(config.url, input));
     const headers: Record<string, string> = { Accept: "application/json", ...(config.headers ?? {}) };
-    for (const [header, secretArn] of Object.entries(config.secretHeaders ?? {})) headers[header] = await getSecret(secretArn);
+    for (const [header, secretRef] of Object.entries(config.secretHeaders ?? {})) headers[header] = await secrets.get(secretRef);
     if (config.idempotencyHeader && externalMessageId) headers[config.idempotencyHeader] = externalMessageId;
 
     const controller = new AbortController();

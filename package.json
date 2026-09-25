@@ -2,7 +2,7 @@
   "name": "whatsapp-agents-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "Multi-tenant serverless agent runtime for WhatsApp and web channels on AWS.",
+  "description": "Provider-neutral, multi-tenant serverless conversational agent runtime with AWS as the first deployment adapter.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,14 +10,17 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/integration/**",
     "test:watch": "vitest",
     "cdk": "cdk",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
     "seed:tenant": "tsx src/scripts/seed-tenant.ts",
     "validate:tenant": "tsx src/scripts/validate-tenant.ts",
-    "admin": "tsx src/admin/server.ts"
+    "admin": "tsx src/admin/server.ts",
+    "test:unit": "vitest run --exclude tests/integration/**",
+    "test:architecture": "vitest run tests/architecture-boundaries.test.ts",
+    "test:integration": "vitest run tests/integration --passWithNoTests"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1136.0",
