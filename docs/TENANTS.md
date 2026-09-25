@@ -171,3 +171,7 @@ npm run validate:tenant -- examples/financial-institution.reference.json
 ```
 
 Use this in onboarding pipelines before configuration is promoted to an environment.
+
+## Configuration schema lifecycle
+
+New tenant JSON should include `"schemaVersion": 1`. The runtime currently migrates legacy schema-0 configuration at ingestion/read boundaries for backwards compatibility; publishers write the current schema. Use `npm run migrate:tenant -- tenant.json --write` before committing old files and `npm run diff:tenant -- old.json new.json` during review.
