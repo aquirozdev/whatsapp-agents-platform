@@ -141,7 +141,7 @@ The platform forwards the inbound message ID in that header.
 
 The upstream service must implement idempotency semantics if duplicate execution would be harmful.
 
-The platform marks an inbound event as processed only **after** successful execution and outbound delivery, so SQS retries are not suppressed by premature deduplication.
+The platform atomically commits conversation state with a durable `prepared` turn record before outbound delivery. If delivery fails, a retry resumes the prepared outbound payload rather than re-running the business turn. The event becomes `completed` only after delivery succeeds.
 
 ## Secrets
 
@@ -153,14 +153,14 @@ Never place secrets in tenant JSON or Git:
 - OTP HMAC secret,
 - private signing keys.
 
-Reference Secrets Manager ARNs.
+Tenant configuration should reference logical secret keys. The AWS `SecretProvider` resolves those keys through Secrets Manager; deployment-level platform secrets may still be supplied as ARNs/environment bindings.
 
 HTTP tools support `secretHeaders`:
 
 ```json
 {
   "secretHeaders": {
-    "Authorization": "arn:aws:secretsmanager:...:secret:bank-auth"
+    "Authorization": { "key": "core-api/authorization" }
   }
 }
 ```
