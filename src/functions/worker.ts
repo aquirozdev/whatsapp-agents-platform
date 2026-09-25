@@ -10,8 +10,16 @@ import { log } from "../core/logger.js";
 const store = new PlatformStore();
 const runtime = new AgentRuntime(store);
 
+const MAX_WEB_MESSAGE_CHARS = 8000;
+const MAX_WEB_ID_CHARS = 256;
+
 function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
   return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+}
+
+function apiBody(event: APIGatewayProxyEventV2): string {
+  if (!event.body) return "";
+  return event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
 }
 
 function isSqsEvent(event: SQSEvent | APIGatewayProxyEventV2): event is SQSEvent {
@@ -68,17 +76,28 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
   const path = event.rawPath;
 
   if (method === "POST" && path === "/v1/chat") {
-    let body: { userId?: string; message?: string; conversationId?: string };
-    try { body = JSON.parse(event.body ?? "{}"); } catch { return json(400, { error: "invalid_json" }); }
-    if (!body.userId || !body.message) return json(400, { error: "userId_and_message_required" });
+    let body: Record<string, unknown>;
+    try { body = JSON.parse(apiBody(event) || "{}") as Record<string, unknown>; } catch { return json(400, { error: "invalid_json" }); }
 
-    const conversationId = body.conversationId ?? body.userId;
+    const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+    const message = typeof body.message === "string" ? body.message : "";
+    const requestedConversationId = typeof body.conversationId === "string" ? body.conversationId.trim() : undefined;
+
+    if (!userId || !message.trim()) return json(400, { error: "userId_and_message_required" });
+    if (userId.length > MAX_WEB_ID_CHARS || (requestedConversationId?.length ?? 0) > MAX_WEB_ID_CHARS) {
+      return json(400, { error: "identifier_too_long", maxChars: MAX_WEB_ID_CHARS });
+    }
+    if (message.length > MAX_WEB_MESSAGE_CHARS) {
+      return json(413, { error: "message_too_large", maxChars: MAX_WEB_MESSAGE_CHARS });
+    }
+
+    const conversationId = requestedConversationId || userId;
     const inbound: InboundEnvelope = {
       tenantId: tenant.tenantId,
       channel: "web",
       conversationId,
-      userId: body.userId,
-      text: body.message,
+      userId,
+      text: message,
       externalMessageId: `web:${randomUUID()}`,
       receivedAt: new Date().toISOString(),
     };
@@ -98,7 +117,7 @@ async function handleApi(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
   const modeMatch = path.match(/^\/v1\/conversations\/(whatsapp|web)\/([^/]+)\/mode$/);
   if (method === "POST" && modeMatch) {
     let body: { mode?: "ai" | "human" };
-    try { body = JSON.parse(event.body ?? "{}"); } catch { return json(400, { error: "invalid_json" }); }
+    try { body = JSON.parse(apiBody(event) || "{}") as { mode?: "ai" | "human" }; } catch { return json(400, { error: "invalid_json" }); }
     if (body.mode !== "ai" && body.mode !== "human") return json(400, { error: "mode_must_be_ai_or_human" });
 
     const channel = modeMatch[1]!;
