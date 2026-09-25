@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "tenantId": "customer-whatsapp",
   "displayName": "Customer WhatsApp",
   "enabled": true,
