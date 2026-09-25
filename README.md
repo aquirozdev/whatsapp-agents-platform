@@ -10,11 +10,11 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
 - Amazon Bedrock Converse with client-side tool execution.
-- Generic HTTP integrations with secret headers, bounded timeouts and optional idempotency headers.
+- Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
 - Durable versioned consent records.
-- OTP through built-in SNS/SES tools or customer-owned start/verify APIs.
+- OTP through built-in SNS/SES tools or customer-owned start/verify APIs, with attempt limits and request cooldowns.
 - Policy checks outside the LLM.
 - Deterministic selections, confirmations, branching and rendering.
 - Document delivery through the current WhatsApp channel.
@@ -22,7 +22,7 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - FIFO queue per conversation.
 - DynamoDB state, audit, OTP and processed-event dedupe.
 - Secrets Manager integration.
-- AWS CDK infrastructure in TypeScript.
+- AWS CDK infrastructure in TypeScript, with API access logs, detailed metrics and stage throttling.
 - Config validation, unit tests, CI and OpenAPI.
 
 ## Runtime architecture
@@ -249,7 +249,7 @@ openapi.yaml      HTTP API contract
 
 This repository is the deployable platform core. The next product layer can add a visual admin portal, human inbox, RBAC/SSO, RAG, connector templates and config versioning without changing the execution model.
 
-See [Roadmap](docs/ROADMAP.md).
+See [Roadmap](docs/ROADMAP.md) and [Production readiness](docs/PRODUCTION-READINESS.md).
 
 ## License
 
