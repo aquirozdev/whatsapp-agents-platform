@@ -4,7 +4,7 @@ import { AgentRuntime } from "../core/agent-runtime.js";
 import type { AgentRunResult, InboundEnvelope, ModelConfig } from "../core/types.js";
 import { sha256, safeEqualHex } from "../core/security.js";
 import { PlatformStore } from "../storage/dynamo.js";
-import { sendWhatsAppOutbound } from "../channels/whatsapp.js";
+import { MetaWhatsAppChannel } from "../channels/whatsapp.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { WorkflowRuntime } from "../workflows/runtime.js";
@@ -16,6 +16,7 @@ import { BedrockModelProvider } from "../adapters/aws/bedrock-model.js";
 
 const store = new PlatformStore();
 const secrets = new AwsSecretsManagerProvider();
+const whatsapp = new MetaWhatsAppChannel(secrets);
 const otpDelivery = new AwsOtpDeliveryProvider();
 const otpHmacSecret = process.env.OTP_HMAC_SECRET_REF ?? process.env.OTP_HMAC_SECRET_ARN ?? "";
 const tools = new ToolRegistry(store, secrets, otpDelivery, otpHmacSecret);
@@ -72,11 +73,7 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
     } : undefined);
 
     if (sendReply && replyTarget) {
-      const recipient = {
-        value: replyTarget.value,
-        type: replyTarget.kind === "whatsapp_user_id" ? "whatsapp_user_id" as const : "phone" as const,
-      };
-      for (const message of result.outbound) await sendWhatsAppOutbound(tenant, recipient, message, secrets);
+      for (const message of result.outbound) await whatsapp.send(tenant, replyTarget, message);
     }
 
     await store.markEventProcessed(inbound.externalMessageId);
