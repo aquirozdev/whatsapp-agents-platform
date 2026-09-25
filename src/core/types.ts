@@ -48,6 +48,7 @@ export interface WhatsAppChannelConfig {
   phoneNumberId: string;
   accessTokenSecretArn: string;
   graphApiVersion: string;
+  sendTimeoutMs?: number;
 }
 
 export interface OtpConfig {
@@ -55,6 +56,7 @@ export interface OtpConfig {
   codeTtlSeconds?: number;
   sessionTtlSeconds?: number;
   maxAttempts?: number;
+  requestCooldownSeconds?: number;
   allowedChannels?: Array<"sms" | "email">;
 }
 
