@@ -52,7 +52,7 @@ export class PlatformStore implements PlatformStorePort {
   }
 
   async putTenant(config: AgentConfig): Promise<void> {
-    const version = config.configVersion ?? `${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const version = `${Date.now()}-${randomUUID().slice(0, 8)}`;
     const published: AgentConfig = { ...config, configVersion: version };
     const now = new Date().toISOString();
 
@@ -89,6 +89,7 @@ export class PlatformStore implements PlatformStorePort {
         },
       ],
     }));
+    config.configVersion = version;
   }
 
   async getConversation(
