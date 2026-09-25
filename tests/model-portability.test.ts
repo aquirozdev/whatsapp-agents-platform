@@ -50,6 +50,7 @@ class FakeStore {
 
   async getConversation() { return this.conversation; }
   async saveConversation(state: ConversationState) { state.revision = (state.revision ?? 0) + 1; this.conversation = state; }
+  async commitTurn(state: ConversationState) { state.revision = (state.revision ?? 0) + 1; this.conversation = state; }
   async audit(...args: unknown[]) { this.audits.push(args); }
   async hasConsent() { return true; }
   async getTenantVersion() { return undefined; }
