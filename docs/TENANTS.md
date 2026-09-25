@@ -31,7 +31,7 @@ If `modelId` is empty, the stack-level `defaultModelId` is used.
 {
   "whatsapp": {
     "phoneNumberId": "123456789",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:...",
+    "accessTokenSecret": { "key": "whatsapp/access-token" },
     "graphApiVersion": "CURRENT_SUPPORTED_VERSION"
   }
 }
@@ -49,7 +49,7 @@ Important tenant-level properties include:
 - `requiresVerification`,
 - `requiresConsents`,
 - HTTP endpoint/template,
-- Secrets Manager header references,
+- portable secret header references,
 - timeout,
 - idempotency header.
 
@@ -158,7 +158,7 @@ Real customer files under `tenants/` are gitignored in this public repository. F
 
 ## Updating a tenant
 
-Edit the JSON and seed/publish again. Publication preserves an existing Web/API key hash when no new plaintext key is supplied, and refuses to bind a WhatsApp `phoneNumberId` already owned by another tenant.
+Edit the JSON and seed/publish again. Publication creates an immutable configuration version and updates the active snapshot, preserves an existing Web/API key hash when no new plaintext key is supplied, and refuses to bind a WhatsApp `phoneNumberId` already owned by another tenant. Active workflows remain pinned to the version that started them.
 
 Use Git for review/history instead of building a second configuration database. If a customer later requires formal four-eyes approval, release promotion or an enterprise operator portal, add that as an optional control-plane profile rather than changing the runtime.
 
