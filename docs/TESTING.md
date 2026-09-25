@@ -26,6 +26,8 @@ The integration suite verifies:
 
 - immutable tenant configuration versions;
 - optimistic conversation revisions;
+- atomic conversation + processed-event commits;
+- durable outbound replay state;
 - conversation leases;
 - logical secret resolution;
 - FIFO dispatcher behavior.
