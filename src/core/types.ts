@@ -216,6 +216,12 @@ export interface WorkflowDeliverStep {
   caption?: string;
 }
 
+export interface WorkflowMessageStep {
+  id: string;
+  type: "message";
+  message: OutboundMessage;
+}
+
 export interface WorkflowEndStep {
   id: string;
   type: "end";
@@ -233,6 +239,7 @@ export type WorkflowStep =
   | WorkflowRenderStep
   | WorkflowRenderListStep
   | WorkflowDeliverStep
+  | WorkflowMessageStep
   | WorkflowEndStep;
 
 export interface WorkflowDefinition {
@@ -340,7 +347,8 @@ export type OutboundMessage =
   | { kind: "text"; text: string }
   | { kind: "document"; url: string; filename?: string; caption?: string }
   | { kind: "image"; url: string; caption?: string }
-  | { kind: "interactive"; body: string; buttons?: Array<{ id: string; title: string }>; list?: { buttonText: string; sections: Array<{ title?: string; rows: Array<{ id: string; title: string; description?: string }> }> } };
+  | { kind: "interactive"; body: string; buttons?: Array<{ id: string; title: string }>; list?: { buttonText: string; sections: Array<{ title?: string; rows: Array<{ id: string; title: string; description?: string }> }> } }
+  | { kind: "template"; name: string; languageCode: string; components?: unknown[] };
 
 export interface ChannelDeliveryReceipt {
   providerMessageId?: string;
