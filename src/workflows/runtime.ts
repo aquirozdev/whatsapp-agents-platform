@@ -1,23 +1,23 @@
 import type { AgentConfig, ConsentRecord, ConversationState, OutboundMessage, ToolContext, WorkflowDefinition, WorkflowSelectOption, WorkflowSelectStep, WorkflowState, WorkflowStep } from "../core/types.js";
 import { getPath, normalizeAnswer, renderTemplate, renderValue, setPath } from "../core/template.js";
 import { ToolRegistry } from "../core/tool-registry.js";
-import { PlatformStore } from "../storage/dynamo.js";
+import type { PlatformStorePort } from "../ports/store.js";
 
 export interface WorkflowTurnResult { text: string; outbound: OutboundMessage[]; toolCalls: string[]; }
 interface SelectionCandidate { value: unknown; label: string; item: unknown; }
 
 export class WorkflowRuntime {
-  constructor(private readonly store: PlatformStore, private readonly tools: ToolRegistry) {}
+  constructor(private readonly store: PlatformStorePort, private readonly tools: ToolRegistry) {}
 
   async start(tenant: AgentConfig, state: ConversationState, workflowId: string, externalMessageId: string): Promise<WorkflowTurnResult> {
     const definition = this.getDefinition(tenant, workflowId);
     const now = Math.floor(Date.now() / 1000);
     state.workflow = {
-      workflowId, stepIndex: 0, status: "active", data: {},
+      workflowId, configVersion: tenant.configVersion, stepIndex: 0, status: "active", data: {},
       startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       expiresAt: definition.sessionTtlSeconds ? now + definition.sessionTtlSeconds : undefined,
     };
-    await this.store.audit(tenant.tenantId, "workflow.started", { workflowId, userId: state.userId, conversationId: state.conversationId });
+    await this.store.audit(tenant.tenantId, "workflow.started", { workflowId, configVersion: tenant.configVersion, userId: state.userId, conversationId: state.conversationId });
     return this.advance(tenant, state, definition, externalMessageId);
   }
 
