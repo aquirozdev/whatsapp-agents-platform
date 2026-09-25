@@ -85,3 +85,9 @@ A new provider should require:
 3. no changes to workflow definitions, policy code or customer-specific branches.
 
 If a provider requires domain changes, first verify that the missing concept is a true platform capability rather than a vendor-specific feature.
+
+## Operational portability
+
+Observability is also a port. The AWS adapter emits CloudWatch Embedded Metric Format and structured span records, while the core only knows `ObservabilityPort`. Delivery acknowledgement is part of the channel contract through portable receipts/status events rather than Meta-specific state in the runtime.
+
+Tenant JSON carries `schemaVersion`; the runtime migrates older supported configuration at boundaries. Provider/cloud adapters must not require customer configs to encode provider-native resource semantics unless they are explicitly isolated behind a logical reference.
