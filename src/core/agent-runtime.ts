@@ -62,6 +62,7 @@ export class AgentRuntime {
     state.configVersion ??= tenant.configVersion;
 
     if (state.mode === "human") {
+      await this.store.commitTurn(state, inbound.externalMessageId, []);
       return { text: "", outbound: [], state, toolCalls: [] };
     }
 
@@ -80,7 +81,7 @@ export class AgentRuntime {
       if (result.text) state.messages.push({ role: "assistant", text: result.text, at: new Date().toISOString() });
     }
 
-    await this.store.saveConversation(state);
+    await this.store.commitTurn(state, inbound.externalMessageId, result.outbound);
     await this.store.audit(tenant.tenantId, "agent.response", {
       channel: inbound.channel,
       userId: inbound.userId,
