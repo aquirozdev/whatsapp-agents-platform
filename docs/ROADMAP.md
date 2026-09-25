@@ -19,6 +19,9 @@ Implemented:
 - handoff primitive
 - audit/state
 - serverless CDK
+- API access logs, detailed metrics and stage throttling
+- runtime JSON-schema validation for tool inputs
+- built-in OTP request cooldown
 - config validation and CI
 
 ## Phase 2 — operator product
