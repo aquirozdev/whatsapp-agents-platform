@@ -190,6 +190,15 @@ function outboundBody(message: OutboundMessage, recipient: { value: string; type
     type: "image",
     image: { link: message.url, ...(message.caption ? { caption: message.caption } : {}) },
   };
+  if (message.kind === "template") return {
+    ...base,
+    type: "template",
+    template: {
+      name: message.name,
+      language: { code: message.languageCode },
+      ...(message.components ? { components: message.components } : {}),
+    },
+  };
   if (message.buttons?.length) return {
     ...base,
     type: "interactive",
@@ -255,7 +264,7 @@ export class MetaWhatsAppChannel implements ChannelAdapter {
     images: true,
     documents: true,
     audio: true,
-    templates: false,
+    templates: true,
     buttons: true,
     lists: true,
   } as const;
