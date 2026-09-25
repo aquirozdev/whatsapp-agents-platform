@@ -8,7 +8,7 @@ import {
   UpdateCommand,
   DynamoDBDocumentClient,
 } from "@aws-sdk/lib-dynamodb";
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge } from "../core/types.js";
+import type { AgentConfig, ConsentRecord, ConversationState, EventRecord, OtpChallenge, OutboundMessage } from "../core/types.js";
 import type { PlatformStorePort } from "../ports/store.js";
 
 const tableName = process.env.TABLE_NAME ?? "WhatsappAgentsPlatform";
@@ -142,6 +142,77 @@ export class PlatformStore implements PlatformStorePort {
     }
   }
 
+  async commitTurn(
+    state: ConversationState,
+    externalMessageId: string,
+    outbound: OutboundMessage[],
+    ttlSeconds = 86400,
+  ): Promise<void> {
+    state.updatedAt = new Date().toISOString();
+    state.messages = state.messages.slice(-30);
+    const expectedRevision = state.revision ?? 0;
+    const next: ConversationState = { ...state, revision: expectedRevision + 1 };
+    const conversationPk = `TENANT#${state.tenantId}#CONV#${state.channel}#${state.conversationId}`;
+    const now = Math.floor(Date.now() / 1000);
+    const event: EventRecord = {
+      externalMessageId,
+      tenantId: state.tenantId,
+      channel: state.channel,
+      conversationId: state.conversationId,
+      status: "prepared",
+      outbound,
+      createdAt: new Date().toISOString(),
+    };
+
+    const conversationPut = {
+      TableName: tableName,
+      Item: {
+        pk: conversationPk,
+        sk: "STATE",
+        entity: "conversation",
+        state: next,
+        updatedAt: next.updatedAt,
+      },
+      ConditionExpression: expectedRevision === 0
+        ? "attribute_not_exists(pk)"
+        : "#state.#revision = :expectedRevision",
+      ExpressionAttributeNames: expectedRevision === 0
+        ? undefined
+        : { "#state": "state", "#revision": "revision" },
+      ExpressionAttributeValues: expectedRevision === 0
+        ? undefined
+        : { ":expectedRevision": expectedRevision },
+    };
+
+    try {
+      await client.send(new TransactWriteCommand({
+        TransactItems: [
+          { Put: conversationPut },
+          {
+            Put: {
+              TableName: tableName,
+              Item: {
+                pk: `EVENT#${externalMessageId}`,
+                sk: "EVENT",
+                entity: "turn_event",
+                event,
+                status: "prepared",
+                ttl: now + ttlSeconds,
+              },
+              ConditionExpression: "attribute_not_exists(pk)",
+            },
+          },
+        ],
+      }));
+      state.revision = next.revision;
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TransactionCanceledException" || error.name === "ConditionalCheckFailedException")) {
+        throw new ConversationConflictError();
+      }
+      throw error;
+    }
+  }
+
   async setConversationMode(
     tenantId: string,
     channel: string,
@@ -161,13 +232,29 @@ export class PlatformStore implements PlatformStorePort {
     }));
   }
 
-  async isEventProcessed(externalMessageId: string): Promise<boolean> {
+  async getEvent(externalMessageId: string): Promise<EventRecord | undefined> {
     const result = await client.send(new GetCommand({
       TableName: tableName,
       Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
-      ProjectionExpression: "pk",
     }));
-    return Boolean(result.Item);
+    if (result.Item?.event) return result.Item.event as EventRecord;
+    if (result.Item?.processedAt) {
+      return {
+        externalMessageId,
+        tenantId: "",
+        channel: "",
+        conversationId: "",
+        status: "completed",
+        outbound: [],
+        createdAt: String(result.Item.processedAt),
+        completedAt: String(result.Item.processedAt),
+      };
+    }
+    return undefined;
+  }
+
+  async isEventProcessed(externalMessageId: string): Promise<boolean> {
+    return (await this.getEvent(externalMessageId))?.status === "completed";
   }
 
   async markEventProcessed(externalMessageId: string, ttlSeconds = 86400): Promise<void> {
@@ -181,6 +268,18 @@ export class PlatformStore implements PlatformStorePort {
         processedAt: new Date().toISOString(),
         ttl: now + ttlSeconds,
       },
+    }));
+  }
+
+  async completeEvent(externalMessageId: string): Promise<void> {
+    const completedAt = new Date().toISOString();
+    await client.send(new UpdateCommand({
+      TableName: tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET #status = :completed, event.#status = :completed, event.completedAt = :completedAt",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: { ":completed": "completed", ":completedAt": completedAt },
     }));
   }
 
