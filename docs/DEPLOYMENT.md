@@ -17,7 +17,7 @@ Recommended first deployment: a non-production account.
 npm install
 npm run typecheck
 npm test
-npm run synth -- -c stage=dev -c defaultModelId='YOUR_MODEL_ID'
+npm run synth -- -c stage=dev -c defaultModelProvider=bedrock -c defaultModelId='YOUR_MODEL_ID'
 ```
 
 ## 3. Deploy
@@ -73,7 +73,7 @@ aws secretsmanager create-secret \
   --secret-string '<META_ACCESS_TOKEN>'
 ```
 
-Put the returned ARN in `whatsapp.accessTokenSecretArn`.
+Use the returned secret identifier as the AWS binding for the logical tenant reference `whatsapp.accessTokenSecret.key`. New tenant specs should use a logical key (for example `whatsapp.access-token`); legacy `accessTokenSecretArn` remains accepted while migrating existing tenants.
 
 ## 7. Seed the tenant
 
@@ -91,7 +91,7 @@ AWS_REGION='<region>' \
 npm run seed:tenant -- tenant.cooperativa-demo.json '<HIGH_ENTROPY_API_KEY>'
 ```
 
-If `modelId` is empty, the worker uses the stack `defaultModelId`.
+Prefer tenant `model: { provider, model }`. If no tenant model is configured, the worker uses stack-level `defaultModelProvider` + `defaultModelId`. Legacy `modelId` remains accepted as Bedrock during migration.
 
 ## 8. Validate
 
