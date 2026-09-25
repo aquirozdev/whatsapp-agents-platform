@@ -160,7 +160,6 @@ These are intentionally not hidden:
 - API-key authentication is the current Web/API application mechanism;
 - no hosted OIDC/SSO/RBAC control plane by default;
 - no built-in RAG/knowledge-base ingestion yet;
-- no interactive WhatsApp list/button outbound rendering yet;
 - no built-in immutable cross-account audit export yet;
 - no generic PII-redaction layer yet;
 - no dedicated REST/WAF deployment profile yet;
@@ -180,3 +179,11 @@ npm run synth -- -c stage=test -c defaultModelId=dummy-model -c apiRateLimit=100
 ```
 
 A green CI run is necessary but is not equivalent to customer production certification.
+
+## P0/P1 production controls
+
+The runtime now emits provider-neutral operational telemetry without adding an observability service. CloudWatch adapter output uses Embedded Metric Format for turn, model, tool, workflow and delivery signals. Do not add user message bodies, credentials or workflow payloads as metric dimensions.
+
+WhatsApp sends persist provider message IDs as delivery receipts. Meta status webhooks reconcile `sent`, `delivered`, `read` and `failed` states against the durable inbound event record. Accepted outbound messages are not blindly resent on a normal replay once a receipt has been persisted.
+
+For staged releases, deploy with `-c deploymentStrategy=canary10`. The AWS adapter creates Lambda versions/aliases and CodeDeploy groups using a 10%/5-minute canary. Function error alarms stop and roll back an unhealthy deployment. Keep `direct` for local/dev stacks when canary infrastructure is unnecessary.
