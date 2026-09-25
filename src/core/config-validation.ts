@@ -1,4 +1,4 @@
-import type { AgentConfig, ToolBinding, WorkflowStep } from "./types.js";
+import type { AgentConfig, JsonSchema, SecretRef, ToolBinding, WorkflowStep } from "./types.js";
 
 export interface ConfigIssue { path: string; message: string; }
 
@@ -21,6 +21,7 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   if (configBytes > MAX_CONFIG_BYTES) {
     issues.push({ path: "$", message: `Tenant configuration is ${configBytes} bytes; keep it at or below ${MAX_CONFIG_BYTES} bytes.` });
   }
+  validateModel(config, issues);
   validateWhatsApp(config, issues);
   validateOtp(config, issues);
 
@@ -31,6 +32,7 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
     if (RESERVED_TOOLS.has(tool.name)) issues.push({ path: `${path}.name`, message: `${tool.name} is reserved by the platform.` });
     if (tools.has(tool.name)) issues.push({ path: `${path}.name`, message: "Tool names must be unique." });
     tools.set(tool.name, tool);
+    validatePortableSchema(tool.inputSchema, `${path}.inputSchema`, issues);
     if (tool.verificationSubjectFrom && (tool.requiresVerification ?? "none") === "none") {
       issues.push({ path: `${path}.verificationSubjectFrom`, message: "verificationSubjectFrom requires requiresVerification." });
     }
@@ -68,6 +70,60 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   return issues;
 }
 
+function validateModel(config: AgentConfig, issues: ConfigIssue[]): void {
+  const model = config.model;
+  if (!model) return;
+  if (!model.provider?.trim()) issues.push({ path: "model.provider", message: "model.provider is required." });
+  if (!model.model?.trim()) issues.push({ path: "model.model", message: "model.model is required." });
+  if (model.apiKeySecret && !model.apiKeySecret.key?.trim()) {
+    issues.push({ path: "model.apiKeySecret.key", message: "Secret reference key is required." });
+  }
+  if (model.baseUrl) {
+    try {
+      const parsed = new URL(model.baseUrl);
+      if (parsed.protocol !== "https:") issues.push({ path: "model.baseUrl", message: "model.baseUrl must use HTTPS." });
+    } catch {
+      issues.push({ path: "model.baseUrl", message: "model.baseUrl is invalid." });
+    }
+  }
+  if (model.maxTokens !== undefined && (!Number.isInteger(model.maxTokens) || model.maxTokens < 1 || model.maxTokens > 100000)) {
+    issues.push({ path: "model.maxTokens", message: "model.maxTokens must be an integer between 1 and 100000." });
+  }
+  if (model.temperature !== undefined && (model.temperature < 0 || model.temperature > 2)) {
+    issues.push({ path: "model.temperature", message: "model.temperature must be between 0 and 2." });
+  }
+}
+
+function validateSecretRef(value: string | SecretRef, path: string, issues: ConfigIssue[]): void {
+  if (typeof value === "string") {
+    if (!value.trim()) issues.push({ path, message: "Secret reference must not be empty." });
+    return;
+  }
+  if (!value?.key?.trim()) issues.push({ path, message: "Secret reference key is required." });
+}
+
+const PORTABLE_SCHEMA_KEYS = new Set([
+  "type", "properties", "required", "additionalProperties", "enum", "items",
+  "description", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems",
+]);
+
+function validatePortableSchema(schema: JsonSchema, path: string, issues: ConfigIssue[]): void {
+  for (const key of Object.keys(schema)) {
+    if (!PORTABLE_SCHEMA_KEYS.has(key)) {
+      issues.push({ path: `${path}.${key}`, message: `Schema keyword "${key}" is outside the portable tool-schema subset.` });
+    }
+  }
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [key, child] of Object.entries(schema.properties)) {
+      if (child && typeof child === "object") validatePortableSchema(child as JsonSchema, `${path}.properties.${key}`, issues);
+    }
+  }
+  const items = schema.items;
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    validatePortableSchema(items as JsonSchema, `${path}.items`, issues);
+  }
+}
+
 function validateWhatsApp(config: AgentConfig, issues: ConfigIssue[]): void {
   const whatsapp = config.whatsapp;
   if (!whatsapp) return;
@@ -77,8 +133,9 @@ function validateWhatsApp(config: AgentConfig, issues: ConfigIssue[]): void {
   if (!/^v\d+\.\d+$/.test(whatsapp.graphApiVersion)) {
     issues.push({ path: "whatsapp.graphApiVersion", message: "graphApiVersion must look like v23.0." });
   }
-  if (!whatsapp.accessTokenSecretArn?.trim()) {
-    issues.push({ path: "whatsapp.accessTokenSecretArn", message: "WhatsApp access token secret ARN is required." });
+  const tokenRef = whatsapp.accessTokenSecret?.key?.trim() || whatsapp.accessTokenSecretArn?.trim();
+  if (!tokenRef) {
+    issues.push({ path: "whatsapp.accessTokenSecret", message: "WhatsApp access-token secret reference is required." });
   }
   if (whatsapp.sendTimeoutMs !== undefined && (whatsapp.sendTimeoutMs < 1000 || whatsapp.sendTimeoutMs > 30000)) {
     issues.push({ path: "whatsapp.sendTimeoutMs", message: "sendTimeoutMs must be between 1000 and 30000 milliseconds." });
@@ -121,6 +178,9 @@ function validateHttp(tool: ToolBinding, path: string, issues: ConfigIssue[]): v
     }
   } catch {
     issues.push({ path: `${path}.http.url`, message: "HTTP tool URL is invalid." });
+  }
+  for (const [header, ref] of Object.entries(http.secretHeaders ?? {})) {
+    validateSecretRef(ref, `${path}.http.secretHeaders.${header}`, issues);
   }
   if (http.timeoutMs !== undefined && (http.timeoutMs < 100 || http.timeoutMs > 60000)) {
     issues.push({ path: `${path}.http.timeoutMs`, message: "timeoutMs must be between 100 and 60000 milliseconds." });
