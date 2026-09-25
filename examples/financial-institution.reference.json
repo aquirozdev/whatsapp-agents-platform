@@ -6,9 +6,10 @@
   "modelId": "",
   "maxToolRounds": 6,
   "whatsapp": {
-    "phoneNumberId": "REPLACE_ME",
+    "phoneNumberId": "123456789012345",
     "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/demo/whatsapp-token",
-    "graphApiVersion": "REPLACE_WITH_SUPPORTED_VERSION"
+    "graphApiVersion": "v23.0",
+    "sendTimeoutMs": 10000
   },
   "capabilities": [
     {
