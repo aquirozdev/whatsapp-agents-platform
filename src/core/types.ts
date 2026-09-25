@@ -313,6 +313,17 @@ export type OutboundMessage =
   | { kind: "text"; text: string }
   | { kind: "document"; url: string; filename?: string; caption?: string };
 
+export interface EventRecord {
+  externalMessageId: string;
+  tenantId: string;
+  channel: ChannelKind;
+  conversationId: string;
+  status: "prepared" | "completed";
+  outbound: OutboundMessage[];
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface AgentRunResult {
   text: string;
   outbound: OutboundMessage[];
