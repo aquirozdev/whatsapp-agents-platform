@@ -58,7 +58,7 @@ Provider-neutral specs should prefer logical references:
   "model": { "provider": "bedrock", "model": "..." },
   "whatsapp": {
     "phoneNumberId": "...",
-    "accessTokenSecret": { "key": "whatsapp.access-token" },
+    "accessTokenSecret": { "key": "tenant/customer/whatsapp-token" },
     "graphApiVersion": "v23.0"
   }
 }
