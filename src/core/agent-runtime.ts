@@ -150,8 +150,8 @@ export class AgentRuntime {
         system: tenant.systemPrompt + workflowInstruction,
         messages,
         tools: toolDefinitions,
-        maxTokens: 1200,
-        temperature: 0.2,
+        maxTokens: model.maxTokens ?? 1200,
+        temperature: model.temperature ?? 0.2,
       });
       messages.push(response.message);
 
