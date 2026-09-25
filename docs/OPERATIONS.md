@@ -2,7 +2,7 @@
 
 ## Logs
 
-Both Lambdas emit CloudWatch logs. Application logs use one-line JSON where practical.
+Both Lambdas emit CloudWatch logs. API Gateway also writes access logs and enables detailed stage metrics. Application logs use one-line JSON where practical.
 
 Key dimensions to include when debugging:
 
@@ -14,6 +14,16 @@ Key dimensions to include when debugging:
 - tool call names
 
 Do not log access tokens, OTP codes, Authorization headers or full sensitive upstream payloads.
+
+## Edge throttling
+
+The default HTTP API stage target is 100 requests/second with a burst of 200. Override at deploy time with CDK context:
+
+```bash
+-c apiRateLimit=200 -c apiBurstLimit=400
+```
+
+API Gateway HTTP API throttling is best-effort protection, not a tenant quota. Add tenant-aware limits in the application or use a different API profile when contractual per-client quotas are required.
 
 ## Dead-letter queue
 
@@ -56,6 +66,10 @@ Verify SES sender identity and whether the account is still in SES sandbox.
 ### SMS OTP not sent
 
 Check SNS SMS spend limit, destination support and regional SMS configuration.
+
+### OTP_RATE_LIMITED
+
+Built-in OTP requests are atomically rate-limited per tenant + channel user. The default cooldown is 60 seconds and can be changed with `otp.requestCooldownSeconds`.
 
 ## Metrics to add before large production traffic
 
