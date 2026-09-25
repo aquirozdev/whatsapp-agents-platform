@@ -153,7 +153,7 @@ Never place secrets in tenant JSON or Git:
 - OTP HMAC secret,
 - private signing keys.
 
-Tenant specs should reference logical secret keys such as `{ "key": "core.authorization" }`. The AWS deployment binds those keys to Secrets Manager identifiers; other deployment adapters may resolve them differently. Legacy ARN strings remain supported during migration.
+Tenant specs should reference logical secret keys such as `{ "key": "tenant/customer/core-api-auth" }`. The AWS deployment binds those keys to Secrets Manager identifiers; other deployment adapters may resolve them differently. Legacy ARN strings remain supported during migration.
 
 HTTP tools support `secretHeaders`:
 
