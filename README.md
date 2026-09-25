@@ -9,7 +9,7 @@ The platform is intentionally customer- and provider-agnostic: customer behavior
 - Official Meta WhatsApp Cloud API webhook + outbound text/document messages.
 - Multi-tenant resolution by WhatsApp `phone_number_id`.
 - Synchronous REST chat endpoint for web/app integrations.
-- Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock Converse is the first adapter.
+- Provider-neutral model orchestration through `ModelProvider`; Amazon Bedrock and OpenAI-compatible APIs are included adapters.
 - Generic HTTP integrations with secret headers, bounded timeouts, runtime JSON-schema input validation and optional idempotency headers.
 - Tool exposure control: `agent`, `workflow`, or `both`.
 - Deterministic workflow runtime for transactional processes.
@@ -45,7 +45,7 @@ Web/App  -> API Gateway ---------------------------->|
                            +-------------------------+----------------------+
                            |                         |                      |
                     ModelProvider              Workflow Runtime         Tool Registry
-                    (Bedrock today)              deterministic          HTTP / OTP
+                    (Bedrock / OpenAI-compatible)              deterministic          HTTP / OTP
                            |                         |                      |
                            +-------------------------+----------------------+
                                                      |
