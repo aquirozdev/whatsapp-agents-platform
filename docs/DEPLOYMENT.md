@@ -73,7 +73,7 @@ aws secretsmanager create-secret \
   --secret-string '<META_ACCESS_TOKEN>'
 ```
 
-Use the returned secret identifier as the AWS binding for the logical tenant reference `whatsapp.accessTokenSecret.key`. New tenant specs should use a logical key (for example `whatsapp.access-token`); legacy `accessTokenSecretArn` remains accepted while migrating existing tenants.
+Use the returned secret identifier as the AWS binding for the logical tenant reference `whatsapp.accessTokenSecret.key`. New tenant specs should use a logical key (for example `tenant/customer/whatsapp-token`); legacy `accessTokenSecretArn` remains accepted while migrating existing tenants.
 
 ## 7. Seed the tenant
 
