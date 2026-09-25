@@ -73,7 +73,7 @@ aws secretsmanager create-secret \
   --secret-string '<META_ACCESS_TOKEN>'
 ```
 
-Put the returned ARN in `whatsapp.accessTokenSecretArn`.
+Use the secret name or ARN as the portable `whatsapp.accessTokenSecret.key`. Prefer a stable logical secret name so the same tenant spec can be reused by another deployment adapter.
 
 ## 7. Seed the tenant
 
@@ -91,7 +91,7 @@ AWS_REGION='<region>' \
 npm run seed:tenant -- tenant.cooperativa-demo.json '<HIGH_ENTROPY_API_KEY>'
 ```
 
-If `modelId` is empty, the worker uses the stack `defaultModelId`.
+A tenant may use `model.provider` + `model.model`; legacy `modelId` still maps to Bedrock. If neither is set, the AWS composition uses the stack `defaultModelId`.
 
 ## 8. Validate
 
