@@ -10,6 +10,10 @@ export interface SecretRef {
 export interface ModelConfig {
   provider: string;
   model: string;
+  baseUrl?: string;
+  apiKeySecret?: SecretRef;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 export interface JsonSchema {
