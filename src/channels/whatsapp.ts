@@ -53,7 +53,13 @@ export interface ParsedWhatsAppMessage {
   receivedAt: string;
 }
 
-function contentFromMessage(message: NonNullable<NonNullable<NonNullable<MetaWebhookPayload["entry"]>[number]["changes"]>[number]["value"]>["messages"] extends Array<infer M> ? M : never): InboundContent[] {
+type MetaMessage = NonNullable<
+  NonNullable<
+    NonNullable<MetaWebhookPayload["entry"]>[number]["changes"]
+  >[number]["value"]
+> extends { messages?: Array<infer M> } ? M : never;
+
+function contentFromMessage(message: MetaMessage): InboundContent[] {
   if (message.text?.body) return [{ kind: "text", text: message.text.body }];
   if (message.button?.text) return [{ kind: "interactive_reply", title: message.button.text, replyType: "button" }];
   if (message.interactive?.button_reply?.title) return [{
