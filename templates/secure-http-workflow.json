@@ -1,0 +1,133 @@
+{
+  "tenantId": "customer-secure",
+  "displayName": "Customer Secure",
+  "enabled": true,
+  "systemPrompt": "Eres el asistente virtual de la empresa. Para consultar información privada usa start_workflow y nunca improvises autenticación.",
+  "maxToolRounds": 4,
+  "otp": {
+    "enabled": true,
+    "codeTtlSeconds": 300,
+    "sessionTtlSeconds": 900,
+    "maxAttempts": 5,
+    "requestCooldownSeconds": 60,
+    "allowedChannels": ["email"]
+  },
+  "tools": [
+    {
+      "name": "request_verification",
+      "kind": "builtin",
+      "exposure": "workflow",
+      "description": "Send a verification code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "enum": ["email"] },
+          "destination": { "type": "string" },
+          "subjectId": { "type": "string" }
+        },
+        "required": ["channel", "destination", "subjectId"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "verify_code",
+      "kind": "builtin",
+      "exposure": "workflow",
+      "description": "Verify a code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "challengeId": { "type": "string" },
+          "code": { "type": "string" }
+        },
+        "required": ["challengeId", "code"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "lookup_private_data",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Read private customer data after verification.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" }
+        },
+        "required": ["customerId"],
+        "additionalProperties": false
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://api.example.invalid/customers/{{customerId}}",
+        "allowedHosts": ["api.example.invalid"],
+        "timeoutMs": 8000,
+        "maxResponseBytes": 32768
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "private_lookup",
+      "name": "Private lookup",
+      "description": "Verify a customer by email OTP and retrieve private data.",
+      "triggerExamples": ["quiero consultar mis datos", "quiero ver mi información"],
+      "sessionTtlSeconds": 600,
+      "steps": [
+        {
+          "id": "customer",
+          "type": "collect",
+          "field": "customerId",
+          "prompt": "Ingresa tu identificador de cliente.",
+          "transform": "trim",
+          "validation": { "minLength": 1, "maxLength": 64 }
+        },
+        {
+          "id": "email",
+          "type": "collect",
+          "field": "email",
+          "prompt": "Ingresa el correo registrado.",
+          "transform": "trim",
+          "validation": { "minLength": 5, "maxLength": 254 }
+        },
+        {
+          "id": "otp",
+          "type": "verification",
+          "startTool": "request_verification",
+          "startInput": {
+            "channel": "email",
+            "destination": "{{email}}",
+            "subjectId": "{{customerId}}"
+          },
+          "verifyTool": "verify_code",
+          "verifyInput": {
+            "challengeId": "{{_verification.otp.challengeId}}",
+            "code": "{{input}}"
+          },
+          "successPath": "verified",
+          "subjectFrom": "customerId",
+          "prompt": "Ingresa el código enviado a tu correo."
+        },
+        {
+          "id": "lookup",
+          "type": "tool",
+          "tool": "lookup_private_data",
+          "input": { "customerId": "{{customerId}}" },
+          "saveAs": "result"
+        },
+        {
+          "id": "render",
+          "type": "render",
+          "template": "Resultado: {{result}}"
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "message": "Consulta finalizada."
+        }
+      ]
+    }
+  ]
+}
