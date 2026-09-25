@@ -19,8 +19,9 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+      - run: npm run validate:tenant -- examples/tenant.example.json
       - run: npm run validate:tenant -- examples/financial-institution.reference.json
-      - run: npm run synth -- -c stage=test -c defaultModelId=dummy-model
+      - run: npm run synth -- -c stage=test -c defaultModelId=dummy-model -c apiRateLimit=100 -c apiBurstLimit=200
         env:
           CDK_DEFAULT_ACCOUNT: "111111111111"
           CDK_DEFAULT_REGION: us-east-1
