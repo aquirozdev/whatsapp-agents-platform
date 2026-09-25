@@ -137,3 +137,20 @@ The default deployment intentionally uses API Gateway **HTTP API** for lower cos
 AWS documents a maximum HTTP API integration timeout of 30 seconds. Keep synchronous `POST /v1/chat` turns comfortably below that limit; use the queued WhatsApp path or an asynchronous integration pattern for slower jobs.
 
 AWS WAF integrates directly with API Gateway REST APIs, not HTTP APIs. If a regulated customer requires direct WAF association or REST usage plans/API-key quotas, use a dedicated edge profile (REST API or CloudFront/WAF in front of the service) rather than complicating the shared default stack.
+
+## Staging and production canary profile
+
+Development remains direct by default:
+
+```bash
+npm run deploy -- -c stage=dev -c deploymentStrategy=direct
+```
+
+For staged environments use the canary profile:
+
+```bash
+npm run deploy:staging -- -c defaultModelProvider=bedrock -c defaultModelId='MODEL_ID'
+npm run deploy:production -- -c defaultModelProvider=bedrock -c defaultModelId='MODEL_ID'
+```
+
+`canary10` publishes Lambda versions, routes through a `live` alias and uses CodeDeploy to shift 10% of traffic for five minutes before full promotion. CloudWatch function-error alarms trigger automatic rollback. This is a deployment control, not an additional application service.
