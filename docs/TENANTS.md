@@ -37,7 +37,7 @@ If `modelId` is empty, the stack-level `defaultModelId` is used.
 }
 ```
 
-Keep the Graph API version configurable per tenant. Do not hard-code customer tokens or secrets.
+Keep the Graph API version configurable per tenant. The repository examples currently pin `v26.0`; review Meta's version lifecycle during customer upgrades rather than hard-coding a platform-wide value. Do not hard-code customer tokens or secrets.
 
 ## Tools
 
@@ -117,7 +117,8 @@ Do not put the plaintext key inside tenant JSON.
 
 Before writing to DynamoDB, the seed CLI validates:
 
-- required tenant fields,
+- required tenant fields and safe tenant ID format;
+- maximum config/prompt sizes to stay below runtime storage limits,
 - unique tool names,
 - reserved tool names,
 - HTTP URL/origin safety, HTTPS and host allowlists,
@@ -135,18 +136,31 @@ A reference tenant may show placeholder endpoints and field shapes when an RFC d
 
 Do not treat those placeholders as production assumptions. Replace them after obtaining the customer's service specification.
 
+## Local admin
+
+Run:
+
+```bash
+npm run admin
+```
+
+The server binds only to `127.0.0.1` and provides a deliberately small UI for:
+
+- choosing a reusable template;
+- editing tenant JSON;
+- validating with the same `validateAgentConfig` rules;
+- saving atomically to `tenants/*.json`;
+- publishing the saved tenant to DynamoDB with local AWS credentials.
+
+Mutating calls require an in-memory token injected into the locally served page. There is no hosted admin service, admin database or extra AWS resource.
+
+Real customer files under `tenants/` are gitignored in this public repository. For a private customer deployment repository, teams may deliberately version approved/sanitized tenant JSON in Git if their governance permits it.
+
 ## Updating a tenant
 
-Edit the JSON and seed again. The tenant config item is replaced atomically.
+Edit the JSON and seed/publish again. Publication preserves an existing Web/API key hash when no new plaintext key is supplied, and refuses to bind a WhatsApp `phoneNumberId` already owned by another tenant.
 
-Before adding a production admin UI, add:
-
-- config versioning,
-- schema version,
-- draft/publish states,
-- approval workflow,
-- rollback.
-
+Use Git for review/history instead of building a second configuration database. If a customer later requires formal four-eyes approval, release promotion or an enterprise operator portal, add that as an optional control-plane profile rather than changing the runtime.
 
 ## Offline validation
 
