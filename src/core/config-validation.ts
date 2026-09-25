@@ -19,6 +19,23 @@ export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   if (config.model) {
     if (!config.model.provider?.trim()) issues.push({ path: "model.provider", message: "model.provider is required when model is configured." });
     if (!config.model.model?.trim()) issues.push({ path: "model.model", message: "model.model is required when model is configured." });
+    if (config.model.apiKeySecret && !config.model.apiKeySecret.key?.trim()) {
+      issues.push({ path: "model.apiKeySecret.key", message: "model.apiKeySecret.key must be non-empty." });
+    }
+    if (config.model.baseUrl) {
+      try {
+        const parsed = new URL(config.model.baseUrl);
+        if (parsed.protocol !== "https:") issues.push({ path: "model.baseUrl", message: "model.baseUrl must use HTTPS." });
+      } catch {
+        issues.push({ path: "model.baseUrl", message: "model.baseUrl is invalid." });
+      }
+    }
+    if (config.model.maxTokens !== undefined && (!Number.isInteger(config.model.maxTokens) || config.model.maxTokens < 1 || config.model.maxTokens > 100000)) {
+      issues.push({ path: "model.maxTokens", message: "model.maxTokens must be an integer between 1 and 100000." });
+    }
+    if (config.model.temperature !== undefined && (config.model.temperature < 0 || config.model.temperature > 2)) {
+      issues.push({ path: "model.temperature", message: "model.temperature must be between 0 and 2." });
+    }
   }
 
   const configBytes = Buffer.byteLength(JSON.stringify(config), "utf8");
