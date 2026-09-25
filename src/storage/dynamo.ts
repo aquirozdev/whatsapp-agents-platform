@@ -293,7 +293,14 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
     }));
-    if (result.Item?.event) return result.Item.event as ProcessedEventRecord;
+    if (result.Item?.event) {
+      const event = result.Item.event as ProcessedEventRecord;
+      return {
+        ...event,
+        acceptedOutboundCount: Number(result.Item.acceptedOutboundCount ?? event.acceptedOutboundCount ?? 0),
+        deliveryStatus: (result.Item.deliveryStatus as ChannelDeliveryStatus | undefined) ?? event.deliveryStatus,
+      };
+    }
     if (result.Item) {
       return {
         externalMessageId,
@@ -341,26 +348,61 @@ export class PlatformStore implements PlatformStorePort {
 
   async recordOutboundReceipt(externalMessageId: string, receipt: ChannelDeliveryReceipt): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
+
+    if (receipt.providerMessageId) {
+      try {
+        await this.client.send(new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+                UpdateExpression: "SET acceptedOutboundCount = if_not_exists(acceptedOutboundCount, :zero) + :one",
+                ConditionExpression: "attribute_exists(pk)",
+                ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: {
+                  pk: `DELIVERY#${receipt.providerMessageId}`,
+                  sk: "DELIVERY",
+                  entity: "delivery_index",
+                  externalMessageId,
+                  receipt,
+                  deliveryStatus: {
+                    providerMessageId: receipt.providerMessageId,
+                    status: receipt.status,
+                    occurredAt: receipt.acceptedAt,
+                  },
+                  ttl: now + 7 * 86400,
+                },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+          ],
+        }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "TransactionCanceledException") {
+          const existing = await this.client.send(new GetCommand({
+            TableName: this.tableName,
+            Key: { pk: `DELIVERY#${receipt.providerMessageId}`, sk: "DELIVERY" },
+          }));
+          if (existing.Item?.externalMessageId === externalMessageId) return;
+        }
+        throw error;
+      }
+      return;
+    }
+
     await this.client.send(new UpdateCommand({
       TableName: this.tableName,
       Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
-      UpdateExpression: "SET event.deliveries = list_append(if_not_exists(event.deliveries, :empty), :receipts)",
+      UpdateExpression: "SET acceptedOutboundCount = if_not_exists(acceptedOutboundCount, :zero) + :one",
       ConditionExpression: "attribute_exists(pk)",
-      ExpressionAttributeValues: { ":empty": [], ":receipts": [receipt] },
+      ExpressionAttributeValues: { ":zero": 0, ":one": 1 },
     }));
-    if (receipt.providerMessageId) {
-      await this.client.send(new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          pk: `DELIVERY#${receipt.providerMessageId}`,
-          sk: "DELIVERY",
-          entity: "delivery_index",
-          externalMessageId,
-          receipt,
-          ttl: now + 7 * 86400,
-        },
-      }));
-    }
   }
 
   async updateOutboundStatus(status: ChannelDeliveryStatus): Promise<void> {
@@ -374,20 +416,14 @@ export class PlatformStore implements PlatformStorePort {
     await this.client.send(new UpdateCommand({
       TableName: this.tableName,
       Key: { pk: `DELIVERY#${status.providerMessageId}`, sk: "DELIVERY" },
-      UpdateExpression: "SET #receipt.#status = :status, #receipt.occurredAt = :occurredAt, #receipt.errorCode = :errorCode, #receipt.errorMessage = :errorMessage",
-      ExpressionAttributeNames: { "#receipt": "receipt", "#status": "status" },
-      ExpressionAttributeValues: {
-        ":status": status.status,
-        ":occurredAt": status.occurredAt,
-        ":errorCode": status.errorCode ?? null,
-        ":errorMessage": status.errorMessage ?? null,
-      },
+      UpdateExpression: "SET deliveryStatus = :deliveryStatus",
+      ExpressionAttributeValues: { ":deliveryStatus": status },
     }));
 
     await this.client.send(new UpdateCommand({
       TableName: this.tableName,
       Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
-      UpdateExpression: "SET event.deliveryStatus = :deliveryStatus",
+      UpdateExpression: "SET deliveryStatus = :deliveryStatus",
       ConditionExpression: "attribute_exists(pk)",
       ExpressionAttributeValues: { ":deliveryStatus": status },
     }));
