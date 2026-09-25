@@ -4,6 +4,7 @@ import { executeHttpTool } from "../tools/http-tool.js";
 import { OtpService } from "../tools/otp-tools.js";
 import { PlatformStore } from "../storage/dynamo.js";
 import { getPath } from "./template.js";
+import { validateToolInput } from "./input-validation.js";
 
 export type ToolCaller = "agent" | "workflow";
 
@@ -27,6 +28,22 @@ export class ToolRegistry {
   }
 
   async execute(binding: ToolBinding, ctx: ToolContext, input: Record<string, unknown>): Promise<ToolExecutionResult> {
+    const inputValidation = validateToolInput(binding.inputSchema, input);
+    if (!inputValidation.ok) {
+      await this.store.audit(ctx.tenant.tenantId, "tool.input_rejected", {
+        tool: binding.name,
+        userId: ctx.state.userId,
+        reason: inputValidation.message,
+      });
+      return {
+        ok: false,
+        error: {
+          code: "TOOL_INPUT_INVALID",
+          message: `Invalid input for ${binding.name}: ${inputValidation.message}`,
+        },
+      };
+    }
+
     try {
       this.policy.assertToolAllowed(binding, ctx.state, input);
     } catch (error) {
