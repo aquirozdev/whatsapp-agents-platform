@@ -87,11 +87,18 @@ export async function sendWhatsAppOutbound(tenant: AgentConfig, to: string, mess
         },
       };
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(tenant.whatsapp.sendTimeoutMs ?? 10000),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.name : "unknown";
+    throw new Error(`WhatsApp send failed before receiving a response (${reason}).`);
+  }
 
   if (!response.ok) {
     const responseBody = await response.text();
