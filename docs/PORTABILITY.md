@@ -25,6 +25,8 @@ Provider differences are hidden behind small contracts:
 - `TurnDispatcher`: at-least-once dispatch with a conversation ordering/serialization key.
 - `SecretProvider`: logical secret references.
 - `OtpDeliveryPort`: built-in OTP delivery.
+- `ChannelAdapter`: inbound normalization and outbound channel delivery.
+- `ToolExecutor`: pluggable integration kinds such as HTTP today and MCP/SOAP/etc. later without changing the policy/tool registry.
 
 Adapters may implement those contracts differently. The contract describes required semantics, not a specific cloud resource.
 
@@ -78,8 +80,8 @@ WhatsApp remains serialized by the dispatcher ordering key.
 
 A new provider should require:
 
-1. one adapter implementing an existing port;
+1. one adapter implementing an existing port (or one registered `ToolExecutor` for a new integration kind);
 2. adapter-focused tests;
-3. no changes to workflow definitions or policy code.
+3. no changes to workflow definitions, policy code or customer-specific branches.
 
 If a provider requires domain changes, first verify that the missing concept is a true platform capability rather than a vendor-specific feature.
