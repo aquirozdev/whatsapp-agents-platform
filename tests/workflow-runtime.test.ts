@@ -45,6 +45,7 @@ const tenant: AgentConfig = {
   displayName: "Bank",
   enabled: true,
   systemPrompt: "Assistant",
+  configVersion: "v1",
   tools: [
     { name: "resolve_customer", kind: "http", exposure: "workflow", description: "", inputSchema: {}, http: { method: "POST", url: "https://example.com" } },
     { name: "send_otp", kind: "http", exposure: "workflow", description: "", inputSchema: {}, http: { method: "POST", url: "https://example.com" } },
@@ -114,6 +115,7 @@ describe("WorkflowRuntime", () => {
     expect(conversation.verification.level).toBe("otp");
     expect(conversation.verification.subjectId).toBe("c-1");
     expect(conversation.workflow?.status).toBe("completed");
+    expect(conversation.workflow?.configVersion).toBe("v1");
     expect(tools.calls).toEqual(["resolve_customer", "send_otp", "verify_otp", "verify_otp", "list_accounts", "balance"]);
   });
 
