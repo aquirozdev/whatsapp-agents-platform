@@ -84,7 +84,10 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
     const result = await runtime.execute(tenant, inbound);
 
     if (sendReply && replyTarget) {
-      for (const message of result.outbound) await whatsapp.send(tenant, replyTarget, message);
+      const sendTenant = result.state.configVersion && result.state.configVersion !== tenant.configVersion
+        ? (await store.getTenantVersion(tenant.tenantId, result.state.configVersion) ?? tenant)
+        : tenant;
+      for (const message of result.outbound) await whatsapp.send(sendTenant, replyTarget, message);
     }
     await store.markEventDelivered(inbound.externalMessageId);
     return result;
