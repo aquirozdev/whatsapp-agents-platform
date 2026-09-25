@@ -81,7 +81,9 @@ Meta Send Message API
 
 The event source uses `batchSize: 1`. This deliberately simplifies FIFO failure semantics: a failed record cannot allow a later record from the same invocation to overtake it, while Lambda can still scale across different FIFO message groups.
 
-A message is marked processed **after** runtime execution and outbound delivery succeeds. This lets SQS retries actually retry failed work; marking before execution would incorrectly suppress retries.
+The conversation revision and a durable processed-event record (including outbound messages) are committed atomically. Outbound delivery happens afterward. If delivery fails, a retry replays the persisted outbound payload instead of re-running the model, workflow or transactional tools. Delivery is then marked separately.
+
+This removes the dangerous retry path where the same inbound turn could advance a workflow twice. As with any external HTTP messaging API, a crash after the provider accepts a message but before the delivery marker is persisted can still produce an ambiguous delivery; transactional customer APIs must therefore continue to honor idempotency keys.
 
 ## Web/API path
 
@@ -189,7 +191,9 @@ No domain-specific class or Lambda is required.
 - SQS retries worker failures.
 - DLQ receives a record after five failed receives.
 - FIFO batch size is 1 for simple ordering/failure behavior.
-- Event dedupe is persisted after success.
+- Conversation state + processed inbound result are committed atomically.
+- Failed outbound delivery replays the durable outbound result without re-running the transaction.
+- Event dedupe is durable.
 - Side-effecting HTTP tools can forward an idempotency key to the upstream API.
 - HTTP timeouts are bounded.
 - Bedrock tool rounds are bounded.
