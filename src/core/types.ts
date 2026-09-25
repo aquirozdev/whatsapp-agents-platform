@@ -353,3 +353,15 @@ export interface ConsentRecord {
   channel: ChannelKind;
   conversationId: string;
 }
+
+
+export interface ProcessedEventRecord {
+  externalMessageId: string;
+  tenantId: string;
+  channel: ChannelKind;
+  configVersion?: number;
+  outbound: OutboundMessage[];
+  processedAt: string;
+  deliveredAt?: string;
+  expiresAt?: number;
+}
