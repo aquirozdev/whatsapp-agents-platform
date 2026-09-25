@@ -10,6 +10,7 @@ import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Alarm, ComparisonOperator, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
 
 interface PlatformStackProps extends StackProps { stage: string }
 
@@ -42,6 +43,21 @@ export class PlatformStack extends Stack {
       visibilityTimeout: Duration.seconds(600),
       retentionPeriod: Duration.days(4),
       deadLetterQueue: { queue: dlq, maxReceiveCount: 5 },
+    });
+
+    new Alarm(this, "QueueAgeAlarm", {
+      metric: queue.metricApproximateAgeOfOldestMessage(),
+      threshold: Number(this.node.tryGetContext("queueAgeAlarmSeconds") ?? 120),
+      evaluationPeriods: 2,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+    new Alarm(this, "DlqMessagesAlarm", {
+      metric: dlq.metricApproximateNumberOfMessagesVisible(),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
     });
 
     const metaAppSecret = new Secret(this, "MetaAppSecret", {
