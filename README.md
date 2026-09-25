@@ -195,7 +195,7 @@ Tools integrate customer systems without adding AWS services.
     "method": "POST",
     "url": "https://core.example.com/accounts/balance",
     "secretHeaders": {
-      "Authorization": { "key": "core.authorization" }
+      "Authorization": { "key": "tenant/customer/core-api-auth" }
     },
     "bodyTemplate": { "accountId": "{{accountId}}" },
     "idempotencyHeader": "Idempotency-Key"
