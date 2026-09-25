@@ -385,6 +385,41 @@ export class PlatformStore implements PlatformStorePort {
     }
   }
 
+  async claimToolRateSlot(
+    tenantId: string,
+    toolName: string,
+    subject: string,
+    windowSeconds: number,
+    maxCalls: number,
+  ): Promise<boolean> {
+    const now = Math.floor(Date.now() / 1000);
+    const bucket = Math.floor(now / windowSeconds);
+    const ttl = (bucket + 1) * windowSeconds + 3600;
+    try {
+      await this.client.send(new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          pk: `TENANT#${tenantId}#TOOL_RATE#${toolName}#${subject}`,
+          sk: `WINDOW#${bucket}`,
+        },
+        UpdateExpression: "SET #calls = if_not_exists(#calls, :zero) + :one, #ttl = :ttl, #entity = :entity",
+        ConditionExpression: "attribute_not_exists(#calls) OR #calls < :maxCalls",
+        ExpressionAttributeNames: { "#calls": "calls", "#ttl": "ttl", "#entity": "entity" },
+        ExpressionAttributeValues: {
+          ":zero": 0,
+          ":one": 1,
+          ":ttl": ttl,
+          ":entity": "tool_rate_limit",
+          ":maxCalls": maxCalls,
+        },
+      }));
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.name === "ConditionalCheckFailedException") return false;
+      throw error;
+    }
+  }
+
   async claimOtpRequestSlot(tenantId: string, userId: string, cooldownSeconds: number): Promise<boolean> {
     if (cooldownSeconds <= 0) return true;
     const now = Math.floor(Date.now() / 1000);
