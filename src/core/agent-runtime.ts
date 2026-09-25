@@ -182,20 +182,19 @@ export class AgentRuntime {
         return { text: result.text, outbound: result.outbound, toolCalls: [...toolCalls, ...result.toolCalls] };
       }
 
+      const toolResults: ModelContentBlock[] = [];
       for (const call of requestedTools) {
         toolCalls.push(call.name);
         const result = await this.tools.executeByName(tenant, call.name, ctx, call.input, "agent");
-        messages.push({
-          role: "tool",
-          content: [{
-            type: "tool_result",
-            id: call.id,
-            name: call.name,
-            result,
-            isError: !result.ok,
-          }],
+        toolResults.push({
+          type: "tool_result",
+          id: call.id,
+          name: call.name,
+          result,
+          isError: !result.ok,
         });
       }
+      messages.push({ role: "tool", content: toolResults });
     }
 
     throw new Error("Agent loop ended unexpectedly.");
