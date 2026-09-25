@@ -9,6 +9,7 @@ interface MetaWebhookPayload {
         messages?: Array<{
           id?: string;
           from?: string;
+          from_user_id?: string;
           timestamp?: string;
           type?: string;
           text?: { body?: string };
@@ -23,6 +24,8 @@ interface MetaWebhookPayload {
 export interface ParsedWhatsAppMessage {
   phoneNumberId: string;
   userId: string;
+  replyTo: string;
+  replyToType: "phone" | "whatsapp_user_id";
   externalMessageId: string;
   text: string;
   receivedAt: string;
@@ -37,10 +40,14 @@ export function parseWhatsAppMessages(rawBody: string): ParsedWhatsAppMessage[] 
       if (!phoneNumberId) continue;
       for (const message of change.value?.messages ?? []) {
         const text = message.text?.body ?? message.button?.text ?? message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title;
-        if (!text || !message.id || !message.from) continue;
+        const stableUserId = message.from_user_id ?? message.from;
+        const replyTo = message.from ?? message.from_user_id;
+        if (!text || !message.id || !stableUserId || !replyTo) continue;
         parsed.push({
           phoneNumberId,
-          userId: message.from,
+          userId: stableUserId,
+          replyTo,
+          replyToType: message.from ? "phone" : "whatsapp_user_id",
           externalMessageId: message.id,
           text,
           receivedAt: message.timestamp ? new Date(Number(message.timestamp) * 1000).toISOString() : new Date().toISOString(),
@@ -60,11 +67,16 @@ export function toInboundEnvelope(tenant: AgentConfig, parsed: ParsedWhatsAppMes
     text: parsed.text,
     externalMessageId: parsed.externalMessageId,
     receivedAt: parsed.receivedAt,
-    replyTo: parsed.userId,
+    replyTo: parsed.replyTo,
+    replyToType: parsed.replyToType,
   };
 }
 
-export async function sendWhatsAppOutbound(tenant: AgentConfig, to: string, message: OutboundMessage): Promise<void> {
+export async function sendWhatsAppOutbound(
+  tenant: AgentConfig,
+  recipient: { value: string; type: "phone" | "whatsapp_user_id" },
+  message: OutboundMessage,
+): Promise<void> {
   if (!tenant.whatsapp) throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp configuration.`);
   const token = await getSecret(tenant.whatsapp.accessTokenSecretArn);
   const endpoint = `https://graph.facebook.com/${tenant.whatsapp.graphApiVersion}/${tenant.whatsapp.phoneNumberId}/messages`;
@@ -72,13 +84,15 @@ export async function sendWhatsAppOutbound(tenant: AgentConfig, to: string, mess
   const body = message.kind === "text"
     ? {
         messaging_product: "whatsapp",
-        to,
+        recipient_type: "individual",
+        ...(recipient.type === "phone" ? { to: recipient.value } : { recipient: recipient.value }),
         type: "text",
         text: { body: message.text },
       }
     : {
         messaging_product: "whatsapp",
-        to,
+        recipient_type: "individual",
+        ...(recipient.type === "phone" ? { to: recipient.value } : { recipient: recipient.value }),
         type: "document",
         document: {
           link: message.url,
