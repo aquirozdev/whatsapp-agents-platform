@@ -43,4 +43,48 @@ describe("validateAgentConfig", () => {
     value.tools[0]!.name = "start_workflow";
     expect(validateAgentConfig(value).some((issue) => issue.message.includes("reserved"))).toBe(true);
   });
+
+  it("validates WhatsApp Graph API and timeout settings", () => {
+    const value = config();
+    value.whatsapp = {
+      phoneNumberId: "abc",
+      accessTokenSecretArn: "",
+      graphApiVersion: "latest",
+      sendTimeoutMs: 100,
+    };
+    const issues = validateAgentConfig(value);
+    expect(issues.some((issue) => issue.path === "whatsapp.phoneNumberId")).toBe(true);
+    expect(issues.some((issue) => issue.path === "whatsapp.graphApiVersion")).toBe(true);
+    expect(issues.some((issue) => issue.path === "whatsapp.accessTokenSecretArn")).toBe(true);
+    expect(issues.some((issue) => issue.path === "whatsapp.sendTimeoutMs")).toBe(true);
+  });
+
+  it("validates OTP safety bounds", () => {
+    const value = config();
+    value.otp = {
+      enabled: true,
+      codeTtlSeconds: 5,
+      sessionTtlSeconds: 30,
+      maxAttempts: 0,
+      requestCooldownSeconds: 5000,
+    };
+    const issues = validateAgentConfig(value);
+    expect(issues.some((issue) => issue.path === "otp.codeTtlSeconds")).toBe(true);
+    expect(issues.some((issue) => issue.path === "otp.sessionTtlSeconds")).toBe(true);
+    expect(issues.some((issue) => issue.path === "otp.maxAttempts")).toBe(true);
+    expect(issues.some((issue) => issue.path === "otp.requestCooldownSeconds")).toBe(true);
+  });
+
+  it("validates HTTP execution bounds", () => {
+    const value = config();
+    value.tools[0]!.http = {
+      method: "GET",
+      url: "https://example.com",
+      timeoutMs: 70000,
+      maxResponseBytes: 6 * 1024 * 1024,
+    };
+    const issues = validateAgentConfig(value);
+    expect(issues.some((issue) => issue.path.endsWith(".http.timeoutMs"))).toBe(true);
+    expect(issues.some((issue) => issue.path.endsWith(".http.maxResponseBytes"))).toBe(true);
+  });
 });
