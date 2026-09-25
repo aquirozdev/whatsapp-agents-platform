@@ -9,7 +9,7 @@
     "graphApiVersion": "v26.0",
     "sendTimeoutMs": 10000,
     "accessTokenSecret": {
-      "key": "whatsapp.access-token"
+      "key": "tenant/customer-whatsapp/whatsapp-token"
     }
   },
   "tools": [
