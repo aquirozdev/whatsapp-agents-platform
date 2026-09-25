@@ -75,7 +75,7 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
         ? await store.getTenantVersion(inbound.tenantId, processed.configVersion)
         : await store.getTenant(inbound.tenantId);
       if (!replayTenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled during outbound replay.`);
-      const alreadyAccepted = processed.deliveries?.length ?? 0;
+      const alreadyAccepted = processed.acceptedOutboundCount ?? processed.deliveries?.length ?? 0;
       for (let index = alreadyAccepted; index < processed.outbound.length; index += 1) {
         const receipt = await whatsapp.send(replayTenant, replyTarget, processed.outbound[index]!);
         receipt.metadata = { ...(receipt.metadata ?? {}), messageIndex: index };
