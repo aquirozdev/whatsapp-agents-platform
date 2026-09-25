@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import { parseWhatsAppMessages, toInboundEnvelope } from "../channels/whatsapp.js";
+import { MetaWhatsAppChannel } from "../channels/whatsapp.js";
 import { PlatformStore } from "../storage/dynamo.js";
 import { AwsSecretsManagerProvider } from "../adapters/aws/secrets-manager.js";
 import { AwsSqsTurnDispatcher } from "../adapters/aws/sqs-dispatcher.js";
@@ -8,6 +8,7 @@ import { log } from "../core/logger.js";
 
 const store = new PlatformStore();
 const secrets = new AwsSecretsManagerProvider();
+const whatsapp = new MetaWhatsAppChannel(secrets);
 const queueUrl = process.env.QUEUE_URL ?? "";
 const dispatcher = queueUrl ? new AwsSqsTurnDispatcher(queueUrl) : undefined;
 
@@ -42,14 +43,14 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   if (!verifyMetaSignature(rawBody, signature, appSecret)) return response(401, { error: "invalid_signature" });
 
   if (!dispatcher) return response(500, { error: "queue_not_configured" });
-  const parsedMessages = parseWhatsAppMessages(rawBody);
+  const parsedMessages = whatsapp.parseInbound(rawBody);
   for (const message of parsedMessages) {
-    const tenant = await store.getTenantByWhatsAppPhoneNumberId(message.phoneNumberId);
+    const tenant = await store.getTenantByWhatsAppPhoneNumberId(message.routingKey);
     if (!tenant?.enabled) {
-      log("warn", "Ignoring message for unknown or disabled WhatsApp phone number", { phoneNumberId: message.phoneNumberId });
+      log("warn", "Ignoring message for unknown or disabled WhatsApp phone number", { phoneNumberId: message.routingKey });
       continue;
     }
-    const envelope = toInboundEnvelope(tenant, message);
+    const envelope = whatsapp.toEnvelope(tenant, message);
     await dispatcher.dispatch(envelope, {
       orderingKey: `${tenant.tenantId}:${message.userId}`,
       dedupeKey: message.externalMessageId,
