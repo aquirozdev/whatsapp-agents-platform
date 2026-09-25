@@ -24,7 +24,7 @@ function tenantModel(tenant: AgentConfig, fallback?: ModelConfig): ModelConfig {
   throw new Error(`No model configured for tenant ${tenant.tenantId}.`);
 }
 
-function historyMessages(tenant: AgentConfig, stateMessages: AgentRunResult["state"]["messages"]): ModelMessage[] {
+function historyMessages(stateMessages: AgentRunResult["state"]["messages"]): ModelMessage[] {
   return stateMessages.slice(-20).map((message) => ({
     role: message.role,
     content: [{ type: "text", text: message.text }],
@@ -107,7 +107,7 @@ export class AgentRuntime {
       throw new Error(`Model provider ${provider.id} does not support tool calling required by tenant ${tenant.tenantId}.`);
     }
 
-    const messages = historyMessages(tenant, state.messages);
+    const messages = historyMessages(state.messages);
     messages.push({ role: "user", content: [{ type: "text", text: userText }] });
 
     const agentBindings = this.tools.getAgentBindings(tenant);
