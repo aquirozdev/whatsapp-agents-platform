@@ -5,12 +5,22 @@ export interface ConfigIssue { path: string; message: string; }
 const TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
 const WORKFLOW_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 const RESERVED_TOOLS = new Set(["start_workflow"]);
+const TENANT_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const MAX_CONFIG_BYTES = 300 * 1024;
 
 export function validateAgentConfig(config: AgentConfig): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   if (!config.tenantId?.trim()) issues.push({ path: "tenantId", message: "tenantId is required." });
+  else if (!TENANT_ID.test(config.tenantId)) issues.push({ path: "tenantId", message: "tenantId must match [a-z0-9][a-z0-9_-]{0,63}." });
   if (!config.displayName?.trim()) issues.push({ path: "displayName", message: "displayName is required." });
+  else if (config.displayName.length > 120) issues.push({ path: "displayName", message: "displayName must be at most 120 characters." });
   if (!config.systemPrompt?.trim()) issues.push({ path: "systemPrompt", message: "systemPrompt is required." });
+  else if (config.systemPrompt.length > 20000) issues.push({ path: "systemPrompt", message: "systemPrompt must be at most 20000 characters." });
+
+  const configBytes = Buffer.byteLength(JSON.stringify(config), "utf8");
+  if (configBytes > MAX_CONFIG_BYTES) {
+    issues.push({ path: "$", message: `Tenant configuration is ${configBytes} bytes; keep it at or below ${MAX_CONFIG_BYTES} bytes.` });
+  }
   validateWhatsApp(config, issues);
   validateOtp(config, issues);
 
