@@ -269,3 +269,9 @@ Generic HTTP tools enforce the following runtime constraints:
 - `responsePath` can expose only the required JSON subtree.
 
 These controls reduce SSRF and accidental data-exposure risk without adding another service.
+
+## Retry and quota safety
+
+Retries are never a blanket transport feature. Side-effecting HTTP methods are retried only when an idempotency header is configured, and retry count/delay are bounded. Per-tool quotas are evaluated outside the model and stored atomically in the platform store, so parallel workers cannot bypass a user/conversation/tenant limit.
+
+Delivery receipts store provider message identifiers and statuses, not message credentials. Observability dimensions must not contain user text, OTPs, authorization headers, access tokens, or unbounded customer identifiers.
