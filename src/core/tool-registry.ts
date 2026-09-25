@@ -99,6 +99,34 @@ export class ToolRegistry {
       }
     }
 
+    if (binding.rateLimit) {
+      const scope = binding.rateLimit.scope ?? "user";
+      const subject = scope === "tenant"
+        ? "tenant"
+        : scope === "conversation"
+          ? ctx.state.conversationId
+          : ctx.state.userId;
+      const allowed = await this.store.claimToolRateSlot(
+        ctx.tenant.tenantId,
+        binding.name,
+        subject,
+        binding.rateLimit.windowSeconds,
+        binding.rateLimit.maxCalls,
+      );
+      if (!allowed) {
+        this.observability.metric({ name: "ToolRateLimited", value: 1, dimensions: { ToolKind: binding.kind } });
+        return {
+          ok: false,
+          error: {
+            code: "TOOL_RATE_LIMITED",
+            message: `Rate limit exceeded for tool ${binding.name}.`,
+            retryable: true,
+            category: "rate_limit",
+          },
+        };
+      }
+    }
+
     const executor = this.executors.get(binding.kind);
     if (!executor) {
       return {
