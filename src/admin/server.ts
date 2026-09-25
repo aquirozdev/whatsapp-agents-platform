@@ -135,9 +135,26 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
       const config = await loadConfig(join(tenantsDir, file));
       const issues = validateAgentConfig(config);
       if (issues.length) { json(res, 422, { valid: false, issues }); return true; }
+      const store = new PlatformStore();
+      const existing = await store.getTenant(config.tenantId);
       const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
-      const runtimeConfig: AgentConfig = { ...config, apiKeyHash: apiKey ? sha256(apiKey) : config.apiKeyHash };
-      await new PlatformStore().putTenant(runtimeConfig);
+      const runtimeConfig: AgentConfig = {
+        ...config,
+        apiKeyHash: apiKey ? sha256(apiKey) : (config.apiKeyHash ?? existing?.apiKeyHash),
+      };
+
+      if (runtimeConfig.whatsapp) {
+        const phoneOwner = await store.getTenantByWhatsAppPhoneNumberId(runtimeConfig.whatsapp.phoneNumberId);
+        if (phoneOwner && phoneOwner.tenantId !== runtimeConfig.tenantId) {
+          json(res, 409, {
+            error: "whatsapp_phone_already_assigned",
+            tenantId: phoneOwner.tenantId,
+          });
+          return true;
+        }
+      }
+
+      await store.putTenant(runtimeConfig);
       json(res, 200, {
         ok: true,
         tenantId: runtimeConfig.tenantId,
