@@ -201,6 +201,21 @@ function validateStep(step: WorkflowStep, path: string, stepIds: Set<string>, to
   if (step.type === "collect" && step.validation?.regex) {
     try { new RegExp(step.validation.regex); } catch { issues.push({ path: `${path}.validation.regex`, message: "Invalid regular expression." }); }
   }
+  if (step.type === "message") {
+    const message = step.message;
+    if (message.kind === "text" && !message.text?.trim()) issues.push({ path: `${path}.message.text`, message: "Text message cannot be empty." });
+    if ((message.kind === "image" || message.kind === "document") && !message.url?.trim()) issues.push({ path: `${path}.message.url`, message: "Media message URL is required." });
+    if (message.kind === "template" && (!message.name?.trim() || !message.languageCode?.trim())) {
+      issues.push({ path: `${path}.message`, message: "Template messages require name and languageCode." });
+    }
+    if (message.kind === "interactive") {
+      if (message.buttons?.length && message.list) issues.push({ path: `${path}.message`, message: "Interactive message must use buttons or list, not both." });
+      if (!message.buttons?.length && !message.list) issues.push({ path: `${path}.message`, message: "Interactive message requires buttons or list." });
+      if ((message.buttons?.length ?? 0) > 3) issues.push({ path: `${path}.message.buttons`, message: "WhatsApp interactive buttons are limited to 3." });
+      const rows = message.list?.sections.reduce((total, section) => total + section.rows.length, 0) ?? 0;
+      if (rows > 10) issues.push({ path: `${path}.message.list`, message: "WhatsApp list messages are limited to 10 rows." });
+    }
+  }
 }
 
 function validateWorkflowTool(name: string, path: string, tools: Map<string, ToolBinding>, issues: ConfigIssue[]): void {
