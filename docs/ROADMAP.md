@@ -4,6 +4,8 @@ The default rule is **keep the platform small**. Add a service only when a real 
 
 ## Core — implemented
 
+The runtime is provider-portable through explicit model/store/secret/dispatcher/tool/channel ports. AWS remains the reference deployment, not a core dependency.
+
 - official WhatsApp Cloud API
 - Web/API chat
 - Bedrock Converse
