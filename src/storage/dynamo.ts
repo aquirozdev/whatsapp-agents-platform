@@ -226,9 +226,9 @@ export class PlatformStore implements PlatformStorePort {
     await client.send(new UpdateCommand({
       TableName: tableName,
       Key: key,
-      UpdateExpression: "SET #state.#mode = :mode, #state.updatedAt = :updatedAt, #state.#revision = #state.#revision + :one",
+      UpdateExpression: "SET #state.#mode = :mode, #state.updatedAt = :updatedAt, #state.#revision = if_not_exists(#state.#revision, :zero) + :one",
       ExpressionAttributeNames: { "#state": "state", "#mode": "mode", "#revision": "revision" },
-      ExpressionAttributeValues: { ":mode": mode, ":updatedAt": new Date().toISOString(), ":one": 1 },
+      ExpressionAttributeValues: { ":mode": mode, ":updatedAt": new Date().toISOString(), ":zero": 0, ":one": 1 },
     }));
   }
 
