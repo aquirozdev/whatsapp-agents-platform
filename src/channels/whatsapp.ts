@@ -1,5 +1,7 @@
-import type { AgentConfig, InboundEnvelope, OutboundMessage } from "../core/types.js";
-import { getSecret } from "../providers/secrets.js";
+import type { AgentConfig, InboundEnvelope, OutboundMessage, SecretRef } from "../core/types.js";
+import type { OutboundChannel } from "../ports/channel.js";
+import type { SecretProvider } from "../ports/secrets.js";
+import { awsSecrets } from "../providers/secrets.js";
 
 interface MetaWebhookPayload {
   entry?: Array<{
@@ -39,7 +41,10 @@ export function parseWhatsAppMessages(rawBody: string): ParsedWhatsAppMessage[] 
       const phoneNumberId = change.value?.metadata?.phone_number_id;
       if (!phoneNumberId) continue;
       for (const message of change.value?.messages ?? []) {
-        const text = message.text?.body ?? message.button?.text ?? message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title;
+        const text = message.text?.body
+          ?? message.button?.text
+          ?? message.interactive?.button_reply?.title
+          ?? message.interactive?.list_reply?.title;
         const stableUserId = message.from_user_id ?? message.from;
         const replyTo = message.from ?? message.from_user_id;
         if (!text || !message.id || !stableUserId || !replyTo) continue;
@@ -50,7 +55,9 @@ export function parseWhatsAppMessages(rawBody: string): ParsedWhatsAppMessage[] 
           replyToType: message.from ? "phone" : "whatsapp_user_id",
           externalMessageId: message.id,
           text,
-          receivedAt: message.timestamp ? new Date(Number(message.timestamp) * 1000).toISOString() : new Date().toISOString(),
+          receivedAt: message.timestamp
+            ? new Date(Number(message.timestamp) * 1000).toISOString()
+            : new Date().toISOString(),
         });
       }
     }
@@ -72,13 +79,22 @@ export function toInboundEnvelope(tenant: AgentConfig, parsed: ParsedWhatsAppMes
   };
 }
 
-export async function sendWhatsAppOutbound(
+function tokenRef(tenant: AgentConfig): SecretRef {
+  const whatsapp = tenant.whatsapp;
+  if (!whatsapp) throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp configuration.`);
+  if (whatsapp.accessTokenSecret) return whatsapp.accessTokenSecret;
+  if (whatsapp.accessTokenSecretArn) return { key: whatsapp.accessTokenSecretArn };
+  throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp access-token secret reference.`);
+}
+
+async function sendOne(
   tenant: AgentConfig,
   recipient: { value: string; type: "phone" | "whatsapp_user_id" },
   message: OutboundMessage,
+  secrets: SecretProvider,
 ): Promise<void> {
   if (!tenant.whatsapp) throw new Error(`Tenant ${tenant.tenantId} has no WhatsApp configuration.`);
-  const token = await getSecret(tenant.whatsapp.accessTokenSecretArn);
+  const token = await secrets.get(tokenRef(tenant));
   const endpoint = `https://graph.facebook.com/${tenant.whatsapp.graphApiVersion}/${tenant.whatsapp.phoneNumberId}/messages`;
 
   const body = message.kind === "text"
@@ -118,4 +134,28 @@ export async function sendWhatsAppOutbound(
     const responseBody = await response.text();
     throw new Error(`WhatsApp send failed (${response.status}): ${responseBody.slice(0, 1000)}`);
   }
+}
+
+export class MetaWhatsAppChannel implements OutboundChannel {
+  readonly id = "whatsapp";
+
+  constructor(private readonly secrets: SecretProvider) {}
+
+  async send(tenant: AgentConfig, inbound: InboundEnvelope, messages: OutboundMessage[]): Promise<void> {
+    if (!inbound.replyTo) return;
+    const recipient = {
+      value: inbound.replyTo,
+      type: inbound.replyToType ?? "phone",
+    } as const;
+    for (const message of messages) await sendOne(tenant, recipient, message, this.secrets);
+  }
+}
+
+/** @deprecated Prefer MetaWhatsAppChannel with injected SecretProvider. */
+export async function sendWhatsAppOutbound(
+  tenant: AgentConfig,
+  recipient: { value: string; type: "phone" | "whatsapp_user_id" },
+  message: OutboundMessage,
+): Promise<void> {
+  return sendOne(tenant, recipient, message, awsSecrets);
 }
