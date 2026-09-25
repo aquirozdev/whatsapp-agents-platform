@@ -4,7 +4,8 @@ import type { SecretProvider } from "../src/ports/secrets.js";
 
 const secrets: SecretProvider = {
   async get(ref) {
-    expect(ref.key).toBe("models/openai");
+    const key = typeof ref === "string" ? ref : ref.key;
+    expect(key).toBe("models/openai");
     return "test-key";
   },
 };
