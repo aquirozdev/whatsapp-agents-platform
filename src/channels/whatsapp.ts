@@ -1,5 +1,6 @@
 import type { AgentConfig, InboundEnvelope, OutboundMessage } from "../core/types.js";
 import type { SecretProvider } from "../ports/secrets.js";
+import type { ChannelAdapter, ChannelInboundMessage } from "../ports/channel.js";
 
 interface MetaWebhookPayload {
   entry?: Array<{
@@ -121,5 +122,55 @@ export async function sendWhatsAppOutbound(
   if (!response.ok) {
     const responseBody = await response.text();
     throw new Error(`WhatsApp send failed (${response.status}): ${responseBody.slice(0, 1000)}`);
+  }
+}
+
+
+export class MetaWhatsAppChannel implements ChannelAdapter {
+  readonly id = "whatsapp";
+
+  constructor(private readonly secrets: SecretProvider) {}
+
+  parseInbound(rawBody: string): ChannelInboundMessage[] {
+    return parseWhatsAppMessages(rawBody).map((message) => ({
+      routingKey: message.phoneNumberId,
+      userId: message.userId,
+      conversationId: message.userId,
+      externalMessageId: message.externalMessageId,
+      text: message.text,
+      receivedAt: message.receivedAt,
+      replyTarget: { value: message.replyTo, kind: message.replyToType },
+      metadata: { phoneNumberId: message.phoneNumberId },
+    }));
+  }
+
+  toEnvelope(tenant: AgentConfig, message: ChannelInboundMessage): InboundEnvelope {
+    return {
+      tenantId: tenant.tenantId,
+      channel: this.id,
+      conversationId: message.conversationId,
+      userId: message.userId,
+      text: message.text,
+      externalMessageId: message.externalMessageId,
+      receivedAt: message.receivedAt,
+      replyTarget: message.replyTarget,
+      metadata: message.metadata,
+    };
+  }
+
+  async send(
+    tenant: AgentConfig,
+    target: { value: string; kind?: string },
+    message: OutboundMessage,
+  ): Promise<void> {
+    await sendWhatsAppOutbound(
+      tenant,
+      {
+        value: target.value,
+        type: target.kind === "whatsapp_user_id" ? "whatsapp_user_id" : "phone",
+      },
+      message,
+      this.secrets,
+    );
   }
 }
