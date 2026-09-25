@@ -38,14 +38,14 @@ The current deployment uses:
 - SQS FIFO for ordered conversation dispatch,
 - DynamoDB for state and immutable tenant-config versions,
 - Secrets Manager,
-- Bedrock Converse,
+- Bedrock Converse or an OpenAI-compatible model API,
 - SNS/SES for optional built-in OTP.
 
 These choices are not part of the domain model.
 
 ## Future deployment adapters
 
-A GCP implementation can map the same ports to Cloud Run/Functions, Pub/Sub ordering keys, Firestore, Secret Manager and Vertex or another model provider.
+A GCP implementation can map the same ports to Cloud Run/Functions, Pub/Sub ordering keys, Firestore, Secret Manager and Vertex or another model provider. Model selection remains independent from deployment cloud.
 
 A Cloudflare implementation should not pretend Queues are FIFO. A conversation-scoped Durable Object is a better implementation of the required serialization guarantee.
 
