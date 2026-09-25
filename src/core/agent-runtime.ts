@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentRunResult, InboundEnvelope, ModelConfig, OutboundMessage, ToolContext } from "./types.js";
+import type { AgentConfig, AgentRunResult, InboundEnvelope, ModelConfig, OutboundMessage, ProcessedEventRecord, ToolContext } from "./types.js";
 import type { ModelMessage, ModelToolDefinition } from "../ports/model.js";
 import { ModelProviderRegistry } from "../ports/model.js";
 import type { PlatformStorePort } from "../ports/store.js";
@@ -23,6 +23,15 @@ export class AgentRuntime {
     const expectedRevision = state.revision ?? 0;
 
     if (state.mode === "human") {
+      const event: ProcessedEventRecord = {
+        externalMessageId: inbound.externalMessageId,
+        tenantId: tenant.tenantId,
+        channel: inbound.channel,
+        configVersion: tenant.configVersion,
+        outbound: [],
+        processedAt: new Date().toISOString(),
+      };
+      await this.store.commitTurn(state, expectedRevision, event);
       return { text: "", outbound: [], state, toolCalls: [] };
     }
 
@@ -50,7 +59,15 @@ export class AgentRuntime {
       if (result.text) state.messages.push({ role: "assistant", text: result.text, at: new Date().toISOString() });
     }
 
-    await this.store.saveConversation(state, expectedRevision);
+    const processedEvent: ProcessedEventRecord = {
+      externalMessageId: inbound.externalMessageId,
+      tenantId: effectiveTenant.tenantId,
+      channel: inbound.channel,
+      configVersion: effectiveTenant.configVersion,
+      outbound: result.outbound,
+      processedAt: new Date().toISOString(),
+    };
+    await this.store.commitTurn(state, expectedRevision, processedEvent);
     await this.store.audit(effectiveTenant.tenantId, "agent.response", {
       channel: inbound.channel,
       userId: inbound.userId,
