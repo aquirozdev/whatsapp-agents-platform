@@ -384,6 +384,14 @@ export class PlatformStore implements PlatformStorePort {
       },
     }));
 
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET event.deliveryStatus = :deliveryStatus",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":deliveryStatus": status },
+    }));
+
     if (status.status === "delivered" || status.status === "read") {
       await this.markEventDelivered(externalMessageId, status.occurredAt);
     }
