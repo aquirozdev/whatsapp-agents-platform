@@ -55,8 +55,33 @@ describe("validateAgentConfig", () => {
     const issues = validateAgentConfig(value);
     expect(issues.some((issue) => issue.path === "whatsapp.phoneNumberId")).toBe(true);
     expect(issues.some((issue) => issue.path === "whatsapp.graphApiVersion")).toBe(true);
-    expect(issues.some((issue) => issue.path === "whatsapp.accessTokenSecretArn")).toBe(true);
+    expect(issues.some((issue) => issue.path === "whatsapp.accessTokenSecret")).toBe(true);
     expect(issues.some((issue) => issue.path === "whatsapp.sendTimeoutMs")).toBe(true);
+  });
+
+  it("accepts portable model and secret references", () => {
+    const value = config();
+    value.model = {
+      provider: "openai",
+      model: "gpt-test",
+      apiKeySecret: { key: "models.openai.api-key" },
+      baseUrl: "https://api.openai.com/v1",
+    };
+    value.whatsapp = {
+      phoneNumberId: "12345",
+      accessTokenSecret: { key: "whatsapp.access-token" },
+      graphApiVersion: "v23.0",
+    };
+    expect(validateAgentConfig(value)).toEqual([]);
+  });
+
+  it("rejects unsupported portable schema keywords", () => {
+    const value = config();
+    value.tools[0]!.inputSchema = {
+      type: "object",
+      oneOf: [{ type: "string" }, { type: "number" }],
+    };
+    expect(validateAgentConfig(value).some((issue) => issue.message.includes("portable tool-schema subset"))).toBe(true);
   });
 
   it("validates OTP safety bounds", () => {
