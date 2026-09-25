@@ -3,11 +3,11 @@
   "displayName": "Financial Institution Demo",
   "enabled": true,
   "systemPrompt": "Eres un asistente institucional. Responde preguntas generales de forma clara. Para consultas financieras o generación de documentos usa start_workflow y no improvises autenticación, consentimiento, montos ni pasos transaccionales.",
-  "modelId": "",
+  "model": { "provider": "bedrock", "model": "YOUR_MODEL_ID" },
   "maxToolRounds": 6,
   "whatsapp": {
     "phoneNumberId": "123456789012345",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/demo/whatsapp-token",
+    "accessTokenSecret": { "key": "whatsapp/access-token" },
     "graphApiVersion": "v26.0",
     "sendTimeoutMs": 10000
   },
