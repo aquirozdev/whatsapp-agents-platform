@@ -24,6 +24,7 @@ The platform is intentionally customer-agnostic: one codebase, one AWS stack, ma
 - Secrets Manager integration.
 - AWS CDK infrastructure in TypeScript, with API access logs, detailed metrics and stage throttling.
 - Config validation, unit tests, CI and OpenAPI.
+- Zero-framework local admin for editing, validating and publishing tenant JSON.
 
 ## Runtime architecture
 
@@ -111,6 +112,25 @@ npm run deploy -- \
 The stack outputs the API URL, DynamoDB table, queue URL and platform secret ARNs.
 
 See [Deployment](docs/DEPLOYMENT.md).
+
+## Configure tenants locally
+
+JSON remains the source of truth. The optional local admin has no React/Next.js/database and is not deployed to AWS:
+
+```bash
+npm run admin
+# open http://127.0.0.1:4173
+```
+
+It edits files under `tenants/`, validates them with the same runtime rules and can publish the selected config to DynamoDB using your current AWS credentials. The plaintext API key is only hashed before publication and is never written to the tenant JSON.
+
+Reusable starting points live in `templates/`:
+
+- `minimal.json`
+- `whatsapp-support.json`
+- `secure-http-workflow.json`
+
+You can also work entirely from CLI; the admin is convenience, not infrastructure.
 
 ## Add a tenant
 
@@ -230,6 +250,7 @@ curl -X POST "$API_URL/v1/conversations/whatsapp/<conversation-id>/mode" \
 
 ```text
 src/
+  admin/          optional localhost-only JSON editor/publisher
   channels/       WhatsApp parsing and outbound adapters
   core/           types, policies, tool registry, config validation
   workflows/      deterministic workflow runtime
@@ -240,14 +261,16 @@ src/
   scripts/        tenant seeding CLI
 infra/            AWS CDK stack
 docs/             architecture, workflows, security, deployment and operations
+templates/        reusable vertical-neutral tenant starting points
 examples/         generic and reference tenant configs
+tenants/          local customer configs (gitignored by default)
 tests/            unit tests
 openapi.yaml      HTTP API contract
 ```
 
 ## Product scope
 
-This repository is the deployable platform core. The next product layer can add a visual admin portal, human inbox, RBAC/SSO, RAG, connector templates and config versioning without changing the execution model.
+This repository is both the deployable runtime and a small local configuration toolkit. Avoid adding a hosted control plane unless a real customer requirement justifies it. Git + JSON + CI provide configuration review/version history; the localhost admin is only an editing/publishing convenience.
 
 See [Roadmap](docs/ROADMAP.md) and [Production readiness](docs/PRODUCTION-READINESS.md).
 
