@@ -159,6 +159,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
         ok: true,
         tenantId: runtimeConfig.tenantId,
         apiKeyUpdated: Boolean(apiKey),
+        configVersion: runtimeConfig.configVersion,
         table: process.env.TABLE_NAME ?? "WhatsappAgentsPlatform",
       });
     } catch (error) {
