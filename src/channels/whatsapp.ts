@@ -1,7 +1,6 @@
 import type { AgentConfig, InboundEnvelope, OutboundMessage, SecretRef } from "../core/types.js";
 import type { OutboundChannel } from "../ports/channel.js";
 import type { SecretProvider } from "../ports/secrets.js";
-import { awsSecrets } from "../providers/secrets.js";
 
 interface MetaWebhookPayload {
   entry?: Array<{
@@ -149,13 +148,4 @@ export class MetaWhatsAppChannel implements OutboundChannel {
     } as const;
     for (const message of messages) await sendOne(tenant, recipient, message, this.secrets);
   }
-}
-
-/** @deprecated Prefer MetaWhatsAppChannel with injected SecretProvider. */
-export async function sendWhatsAppOutbound(
-  tenant: AgentConfig,
-  recipient: { value: string; type: "phone" | "whatsapp_user_id" },
-  message: OutboundMessage,
-): Promise<void> {
-  return sendOne(tenant, recipient, message, awsSecrets);
 }
