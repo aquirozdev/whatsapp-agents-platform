@@ -1,0 +1,571 @@
+{
+  "tenantId": "financial-institution-demo",
+  "displayName": "Financial Institution Demo",
+  "enabled": true,
+  "systemPrompt": "Eres un asistente institucional. Responde preguntas generales de forma clara. Para consultas financieras o generación de documentos usa start_workflow y no improvises autenticación, consentimiento, montos ni pasos transaccionales.",
+  "modelId": "",
+  "maxToolRounds": 6,
+  "whatsapp": {
+    "phoneNumberId": "123456789012345",
+    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/demo/whatsapp-token",
+    "graphApiVersion": "v26.0",
+    "sendTimeoutMs": 10000
+  },
+  "capabilities": [
+    {
+      "id": "identity",
+      "name": "Customer identity",
+      "tools": ["resolve_customer"]
+    },
+    {
+      "id": "verification",
+      "name": "Institution-owned verification",
+      "tools": ["start_customer_otp", "verify_customer_otp"]
+    },
+    {
+      "id": "financial-self-service",
+      "name": "Balances, movements and credit",
+      "tools": ["list_products", "get_savings_balance", "get_movements", "get_credit_details"],
+      "workflows": ["account_balance"]
+    },
+    {
+      "id": "documents",
+      "name": "Document generation",
+      "tools": ["list_documents", "quote_document", "generate_document", "send_document_email"],
+      "workflows": ["bank_certificate"]
+    }
+  ],
+  "tools": [
+    {
+      "name": "resolve_customer",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Resolve a customer from an identification value.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "identification": { "type": "string" } },
+        "required": ["identification"],
+        "additionalProperties": false
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://core.example.invalid/customers/resolve",
+        "allowedHosts": ["core.example.invalid"],
+        "bodyTemplate": { "identification": "{{identification}}" },
+        "maxResponseBytes": 32768
+      }
+    },
+    {
+      "name": "start_customer_otp",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Ask the institution to send an OTP to the registered customer destination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "customerId": { "type": "string" } },
+        "required": ["customerId"]
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://auth.example.invalid/otp/start",
+        "allowedHosts": ["auth.example.invalid"],
+        "bodyTemplate": { "customerId": "{{customerId}}" },
+        "maxResponseBytes": 16384
+      }
+    },
+    {
+      "name": "verify_customer_otp",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Verify the institution-owned OTP challenge.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "challengeId": { "type": "string" },
+          "code": { "type": "string" }
+        },
+        "required": ["customerId", "challengeId", "code"]
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://auth.example.invalid/otp/verify",
+        "allowedHosts": ["auth.example.invalid"],
+        "bodyTemplate": {
+          "customerId": "{{customerId}}",
+          "challengeId": "{{challengeId}}",
+          "code": "{{code}}"
+        },
+        "maxResponseBytes": 16384
+      }
+    },
+    {
+      "name": "list_products",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "List active savings and credit products for a verified customer.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "inputSchema": {
+        "type": "object",
+        "properties": { "customerId": { "type": "string" } },
+        "required": ["customerId"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://core.example.invalid/customers/{{customerId}}/products",
+        "allowedHosts": ["core.example.invalid"],
+        "maxResponseBytes": 65536
+      }
+    },
+    {
+      "name": "get_savings_balance",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Read savings balance data.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "productId": { "type": "string" }
+        },
+        "required": ["customerId", "productId"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://core.example.invalid/customers/{{customerId}}/savings/{{productId}}/balance",
+        "allowedHosts": ["core.example.invalid"],
+        "maxResponseBytes": 32768
+      }
+    },
+    {
+      "name": "get_movements",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Read recent account movements.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "productId": { "type": "string" },
+          "limit": { "type": "number" }
+        },
+        "required": ["customerId", "productId"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://core.example.invalid/customers/{{customerId}}/savings/{{productId}}/movements?limit={{limit}}",
+        "allowedHosts": ["core.example.invalid"],
+        "maxResponseBytes": 65536
+      }
+    },
+    {
+      "name": "get_credit_details",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Read active credit information.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "productId": { "type": "string" }
+        },
+        "required": ["customerId", "productId"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://core.example.invalid/customers/{{customerId}}/credits/{{productId}}",
+        "allowedHosts": ["core.example.invalid"],
+        "maxResponseBytes": 32768
+      }
+    },
+    {
+      "name": "list_documents",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "List documents available to a customer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "customerId": { "type": "string" } },
+        "required": ["customerId"]
+      },
+      "http": {
+        "method": "GET",
+        "url": "https://documents.example.invalid/customers/{{customerId}}/documents",
+        "allowedHosts": ["documents.example.invalid"],
+        "maxResponseBytes": 32768
+      }
+    },
+    {
+      "name": "quote_document",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Quote the document before user confirmation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "documentType": { "type": "string" }
+        },
+        "required": ["customerId", "documentType"]
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://documents.example.invalid/documents/quote",
+        "allowedHosts": ["documents.example.invalid"],
+        "bodyTemplate": {
+          "customerId": "{{customerId}}",
+          "documentType": "{{documentType}}"
+        },
+        "maxResponseBytes": 16384
+      }
+    },
+    {
+      "name": "generate_document",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Generate the selected document after confirmation.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "requiresConsents": [{ "policyId": "personal-data", "version": "1" }],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "documentType": { "type": "string" }
+        },
+        "required": ["customerId", "documentType"]
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://documents.example.invalid/documents/generate",
+        "allowedHosts": ["documents.example.invalid"],
+        "idempotencyHeader": "Idempotency-Key",
+        "bodyTemplate": {
+          "customerId": "{{customerId}}",
+          "documentType": "{{documentType}}"
+        },
+        "maxResponseBytes": 65536
+      }
+    },
+    {
+      "name": "send_document_email",
+      "kind": "http",
+      "exposure": "workflow",
+      "description": "Ask the institution to email the generated document to the registered email.",
+      "requiresVerification": "otp",
+      "verificationSubjectFrom": "customerId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "documentId": { "type": "string" }
+        },
+        "required": ["customerId", "documentId"]
+      },
+      "http": {
+        "method": "POST",
+        "url": "https://documents.example.invalid/documents/email",
+        "allowedHosts": ["documents.example.invalid"],
+        "idempotencyHeader": "Idempotency-Key",
+        "bodyTemplate": {
+          "customerId": "{{customerId}}",
+          "documentId": "{{documentId}}"
+        },
+        "maxResponseBytes": 16384
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "account_balance",
+      "name": "Account balance",
+      "description": "Secure savings balance, movement and active credit lookup.",
+      "triggerExamples": ["quiero consultar mi saldo", "quiero ver mis movimientos", "quiero consultar mi crédito"],
+      "sessionTtlSeconds": 600,
+      "steps": [
+        {
+          "id": "consent",
+          "type": "consent",
+          "policyId": "personal-data",
+          "version": "1",
+          "prompt": "Revisa la política de tratamiento de datos y responde Acepto o No acepto.",
+          "documentUrl": "https://www.example.invalid/privacy"
+        },
+        {
+          "id": "identification",
+          "type": "collect",
+          "field": "identification",
+          "prompt": "Ingresa tu identificación sin espacios ni guiones.",
+          "transform": "digits",
+          "validation": { "minLength": 8, "maxLength": 15, "regex": "^[0-9]+$" }
+        },
+        {
+          "id": "identity",
+          "type": "tool",
+          "tool": "resolve_customer",
+          "input": { "identification": "{{identification}}" },
+          "saveAs": "customer"
+        },
+        {
+          "id": "otp",
+          "type": "verification",
+          "startTool": "start_customer_otp",
+          "startInput": { "customerId": "{{customer.customerId}}" },
+          "verifyTool": "verify_customer_otp",
+          "verifyInput": {
+            "customerId": "{{customer.customerId}}",
+            "challengeId": "{{_verification.otp.challengeId}}",
+            "code": "{{input}}"
+          },
+          "successPath": "verified",
+          "subjectFrom": "customer.customerId",
+          "prompt": "Ingresa el código enviado al canal registrado."
+        },
+        {
+          "id": "products",
+          "type": "tool",
+          "tool": "list_products",
+          "input": { "customerId": "{{customer.customerId}}" },
+          "saveAs": "productResponse"
+        },
+        {
+          "id": "type",
+          "type": "select",
+          "field": "productType",
+          "prompt": "¿Qué deseas consultar?",
+          "options": [
+            { "value": "savings", "label": "Ahorros" },
+            { "value": "credit", "label": "Créditos" }
+          ],
+          "store": "value"
+        },
+        {
+          "id": "product",
+          "type": "select",
+          "field": "product",
+          "prompt": "Selecciona el producto.",
+          "source": "productResponse.products",
+          "filter": { "path": "type", "equals": "{{productType}}" },
+          "valuePath": "id",
+          "labelPath": "displayName",
+          "store": "item",
+          "autoSelectSingle": true
+        },
+        {
+          "id": "branch",
+          "type": "branch",
+          "path": "productType",
+          "cases": {
+            "savings": "savings_balance",
+            "credit": "credit_details"
+          }
+        },
+        {
+          "id": "savings_balance",
+          "type": "tool",
+          "tool": "get_savings_balance",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "productId": "{{product.id}}"
+          },
+          "saveAs": "balance"
+        },
+        {
+          "id": "show_savings",
+          "type": "render",
+          "template": "Cuenta {{product.maskedNumber}}\nSaldo disponible: {{balance.available}} {{balance.currency}}\nSaldo contable: {{balance.ledger}} {{balance.currency}}"
+        },
+        {
+          "id": "ask_movements",
+          "type": "confirm",
+          "field": "wantsMovements",
+          "prompt": "¿Deseas consultar movimientos recientes? Responde Sí o No.",
+          "onReject": "continue"
+        },
+        {
+          "id": "movement_branch",
+          "type": "branch",
+          "path": "wantsMovements",
+          "cases": {
+            "true": "movements",
+            "false": "end_savings"
+          }
+        },
+        {
+          "id": "movements",
+          "type": "tool",
+          "tool": "get_movements",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "productId": "{{product.id}}",
+            "limit": 10
+          },
+          "saveAs": "movementResponse"
+        },
+        {
+          "id": "show_movements",
+          "type": "render_list",
+          "source": "movementResponse.movements",
+          "header": "Movimientos recientes:",
+          "itemTemplate": "{{index}}. {{item.date}} | {{item.amount}} {{item.currency}} | {{item.description}}",
+          "maxItems": 10
+        },
+        {
+          "id": "end_savings",
+          "type": "end",
+          "message": "Consulta finalizada."
+        },
+        {
+          "id": "credit_details",
+          "type": "tool",
+          "tool": "get_credit_details",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "productId": "{{product.id}}"
+          },
+          "saveAs": "credit"
+        },
+        {
+          "id": "show_credit",
+          "type": "render",
+          "template": "Crédito {{product.maskedNumber}}\nValor al día: {{credit.amountDue}}\nCuota: {{credit.installment}}\nPróximo vencimiento: {{credit.dueDate}}\nSaldo capital: {{credit.principalBalance}}\nEstado: {{credit.status}}"
+        },
+        {
+          "id": "end_credit",
+          "type": "end",
+          "message": "Consulta finalizada."
+        }
+      ]
+    },
+    {
+      "id": "bank_certificate",
+      "name": "Generated document",
+      "description": "Quote, verify, confirm, generate and deliver a customer document.",
+      "triggerExamples": ["necesito un certificado", "quiero generar un documento"],
+      "sessionTtlSeconds": 600,
+      "steps": [
+        {
+          "id": "consent",
+          "type": "consent",
+          "policyId": "personal-data",
+          "version": "1",
+          "prompt": "Revisa la política de tratamiento de datos y responde Acepto o No acepto.",
+          "documentUrl": "https://www.example.invalid/privacy"
+        },
+        {
+          "id": "identification",
+          "type": "collect",
+          "field": "identification",
+          "prompt": "Ingresa tu identificación sin espacios ni guiones.",
+          "transform": "digits",
+          "validation": { "minLength": 8, "maxLength": 15, "regex": "^[0-9]+$" }
+        },
+        {
+          "id": "identity",
+          "type": "tool",
+          "tool": "resolve_customer",
+          "input": { "identification": "{{identification}}" },
+          "saveAs": "customer"
+        },
+        {
+          "id": "documents",
+          "type": "tool",
+          "tool": "list_documents",
+          "input": { "customerId": "{{customer.customerId}}" },
+          "saveAs": "documentResponse"
+        },
+        {
+          "id": "document",
+          "type": "select",
+          "field": "document",
+          "prompt": "Selecciona el documento.",
+          "source": "documentResponse.documents",
+          "valuePath": "type",
+          "labelPath": "displayName",
+          "store": "item",
+          "autoSelectSingle": true
+        },
+        {
+          "id": "quote",
+          "type": "tool",
+          "tool": "quote_document",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "documentType": "{{document.type}}"
+          },
+          "saveAs": "quote"
+        },
+        {
+          "id": "show_quote",
+          "type": "render",
+          "template": "Costo actual: {{quote.amount}} {{quote.currency}}."
+        },
+        {
+          "id": "otp",
+          "type": "verification",
+          "startTool": "start_customer_otp",
+          "startInput": { "customerId": "{{customer.customerId}}" },
+          "verifyTool": "verify_customer_otp",
+          "verifyInput": {
+            "customerId": "{{customer.customerId}}",
+            "challengeId": "{{_verification.otp.challengeId}}",
+            "code": "{{input}}"
+          },
+          "successPath": "verified",
+          "subjectFrom": "customer.customerId",
+          "prompt": "Ingresa el código enviado al canal registrado."
+        },
+        {
+          "id": "confirm",
+          "type": "confirm",
+          "field": "confirmed",
+          "prompt": "¿Confirmas la generación por {{quote.amount}} {{quote.currency}}? Responde Sí o No.",
+          "rejectMessage": "Solicitud cancelada. No se generó el documento."
+        },
+        {
+          "id": "generate",
+          "type": "tool",
+          "tool": "generate_document",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "documentType": "{{document.type}}"
+          },
+          "saveAs": "generated"
+        },
+        {
+          "id": "email",
+          "type": "tool",
+          "tool": "send_document_email",
+          "input": {
+            "customerId": "{{customer.customerId}}",
+            "documentId": "{{generated.documentId}}"
+          }
+        },
+        {
+          "id": "deliver",
+          "type": "deliver",
+          "kind": "document",
+          "urlFrom": "generated.documentUrl",
+          "filenameFrom": "generated.filename",
+          "caption": "Documento generado."
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "message": "Proceso finalizado."
+        }
+      ]
+    }
+  ]
+}

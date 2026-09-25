@@ -1,0 +1,13 @@
+node_modules/
+cdk.out/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# Local/customer tenant configs. Keep real customer configs out of the public core repo.
+tenants/*.json
+tenants/.*.tmp

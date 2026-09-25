@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp Agents Platform — Local Admin</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color-scheme:light dark}
+body{margin:0;background:#0b1020;color:#e8edf7}
+header{padding:16px 20px;border-bottom:1px solid #26314e;display:flex;gap:16px;align-items:center}
+header strong{font-size:16px}header span{color:#9aa8c7;font-size:13px}
+main{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 58px)}
+aside{border-right:1px solid #26314e;padding:16px}section{padding:16px}
+button,select,input{border:1px solid #33415f;background:#151d33;color:#e8edf7;border-radius:8px;padding:9px 10px}
+button{cursor:pointer}button.primary{background:#216e5d;border-color:#2d8d77}
+textarea{width:100%;height:calc(100vh - 185px);box-sizing:border-box;border:1px solid #33415f;border-radius:10px;padding:14px;background:#0f1628;color:#dfe8ff;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:none}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center}
+.list{display:flex;flex-direction:column;gap:6px;margin-top:10px}.list button{text-align:left}
+.status{font:12px/1.4 ui-monospace,monospace;color:#9fb0d0;min-height:18px;white-space:pre-wrap}.ok{color:#79d6a8}.err{color:#ff9a9a}
+small{color:#93a1bf;display:block;margin-top:8px}
+@media(max-width:800px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #26314e}textarea{height:60vh}}
+</style>
+</head>
+<body>
+<header><strong>WhatsApp Agents Platform</strong><span>Admin local · JSON es la fuente de verdad</span></header>
+<main>
+<aside>
+  <div class="toolbar">
+    <select id="template"></select>
+    <button id="newBtn">Nuevo</button>
+  </div>
+  <strong>Tenants locales</strong>
+  <div id="list" class="list"></div>
+  <small>Los archivos viven en <code>tenants/</code>. Este panel solo escucha en 127.0.0.1.</small>
+</aside>
+<section>
+  <div class="toolbar">
+    <input id="file" placeholder="cliente.json" maxlength="128">
+    <button id="validateBtn">Validar</button>
+    <button id="saveBtn" class="primary">Guardar</button>
+    <button id="publishBtn">Publicar a DynamoDB</button>
+  </div>
+  <div id="status" class="status"></div>
+  <textarea id="editor" spellcheck="false"></textarea>
+</section>
+</main>
+<script>
+const TOKEN="__LOCAL_ADMIN_TOKEN__";
+const editor=document.getElementById("editor");
+const statusEl=document.getElementById("status");
+const fileEl=document.getElementById("file");
+const listEl=document.getElementById("list");
+const templateEl=document.getElementById("template");
+
+function status(message,ok=true){statusEl.textContent=message;statusEl.className="status "+(ok?"ok":"err")}
+function parseEditor(){return JSON.parse(editor.value)}
+async function api(path,options={}){
+  options.headers={...(options.headers||{}),"x-local-admin-token":TOKEN};
+  const r=await fetch(path,options);
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(data.message||data.error||("HTTP "+r.status));e.data=data;throw e}
+  return data
+}
+function issuesText(data){return(data.issues||[]).map(i=>i.path+": "+i.message).join("\n")}
+
+async function refresh(){
+  const data=await api("/api/configs");
+  listEl.innerHTML="";
+  for(const file of data.configs){
+    const b=document.createElement("button");
+    b.textContent=file;
+    b.onclick=()=>loadConfig(file);
+    listEl.appendChild(b)
+  }
+  templateEl.innerHTML="";
+  for(const file of data.templates){
+    const o=document.createElement("option");
+    o.value=file;o.textContent=file;templateEl.appendChild(o)
+  }
+}
+
+async function loadConfig(file){
+  const data=await api("/api/config/"+encodeURIComponent(file));
+  fileEl.value=file;
+  editor.value=JSON.stringify(data.config,null,2);
+  status("Cargado "+file)
+}
+
+document.getElementById("newBtn").onclick=async()=>{
+  try{
+    const file=templateEl.value;
+    if(!file)throw new Error("No hay templates disponibles");
+    const data=await api("/api/template/"+encodeURIComponent(file));
+    fileEl.value="nuevo-cliente.json";
+    editor.value=JSON.stringify(data.config,null,2);
+    status("Template cargado. Cambia tenantId, nombre y bindings.")
+  }catch(e){status(e.message,false)}
+};
+
+document.getElementById("validateBtn").onclick=async()=>{
+  try{
+    const data=await api("/api/validate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(parseEditor())});
+    status(data.valid?"Configuración válida":issuesText(data),data.valid)
+  }catch(e){status(e.data?.issues?issuesText(e.data):e.message,false)}
+};
+
+document.getElementById("saveBtn").onclick=async()=>{
+  try{
+    const file=fileEl.value.trim();
+    if(!file)throw new Error("Escribe un nombre de archivo .json");
+    const data=await api("/api/config/"+encodeURIComponent(file),{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(parseEditor())});
+    status("Guardado "+data.file+" ("+data.tenantId+")");
+    await refresh()
+  }catch(e){status(e.data?.issues?issuesText(e.data):e.message,false)}
+};
+
+document.getElementById("publishBtn").onclick=async()=>{
+  try{
+    const file=fileEl.value.trim();
+    if(!file)throw new Error("Guarda primero el tenant.");
+    const apiKey=prompt("API key para /v1/chat (opcional). No se guarda en el JSON:")||"";
+    const data=await api("/api/publish/"+encodeURIComponent(file),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({apiKey})});
+    status("Publicado "+data.tenantId+" en "+data.table+(data.apiKeyUpdated?" · API key actualizada":""))
+  }catch(e){status(e.data?.issues?issuesText(e.data):e.message,false)}
+};
+
+refresh().catch(e=>status(e.message,false));
+</script>
+</body>
+</html>

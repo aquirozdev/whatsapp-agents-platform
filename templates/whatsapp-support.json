@@ -1,0 +1,28 @@
+{
+  "tenantId": "customer-whatsapp",
+  "displayName": "Customer WhatsApp",
+  "enabled": true,
+  "systemPrompt": "Eres el asistente virtual de la empresa. Responde de forma breve, correcta y amable. Usa herramientas solo cuando sea necesario. Si el usuario pide una persona, usa human_handoff.",
+  "maxToolRounds": 4,
+  "whatsapp": {
+    "phoneNumberId": "123456789012345",
+    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/customer/whatsapp-token",
+    "graphApiVersion": "v26.0",
+    "sendTimeoutMs": 10000
+  },
+  "tools": [
+    {
+      "name": "human_handoff",
+      "kind": "builtin",
+      "description": "Transfer the conversation to a human operator.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string" }
+        },
+        "required": ["reason"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
