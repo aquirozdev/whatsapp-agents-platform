@@ -29,6 +29,27 @@ export class OtpService {
       ? input.subjectId.trim()
       : ctx.state.userId;
 
+    const cooldownSeconds = config.requestCooldownSeconds ?? 60;
+    const claimed = await this.store.claimOtpRequestSlot(
+      ctx.tenant.tenantId,
+      ctx.state.userId,
+      cooldownSeconds,
+    );
+    if (!claimed) {
+      await this.store.audit(ctx.tenant.tenantId, "otp.rate_limited", {
+        userId: ctx.state.userId,
+        conversationId: ctx.state.conversationId,
+        cooldownSeconds,
+      });
+      return {
+        ok: false,
+        error: {
+          code: "OTP_RATE_LIMITED",
+          message: `A verification code was requested recently. Try again in about ${cooldownSeconds} seconds.`,
+        },
+      };
+    }
+
     const code = String(randomInt(100000, 1000000));
     const challengeId = randomUUID();
     const ttl = config.codeTtlSeconds ?? 300;
