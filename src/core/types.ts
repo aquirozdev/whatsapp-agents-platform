@@ -2,6 +2,10 @@ export type ChannelKind = "whatsapp" | "web" | (string & {});
 export type ConversationMode = "ai" | "human";
 export type VerificationLevel = "none" | "otp";
 export type ToolExposure = "agent" | "workflow" | "both";
+export const CURRENT_SCHEMA_VERSION = 1;
+
+export type ToolErrorCategory = "validation" | "auth" | "rate_limit" | "timeout" | "upstream" | "business" | "internal";
+export type DeliveryStatus = "accepted" | "sent" | "delivered" | "read" | "failed";
 
 export interface SecretRef {
   key: string;
@@ -44,6 +48,12 @@ export interface HttpToolConfig {
   allowInsecureHttp?: boolean;
   maxResponseBytes?: number;
   responsePath?: string;
+  retry?: {
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+    retryOn?: Array<"timeout" | "rate_limit" | "5xx">;
+  };
 }
 
 export interface ToolBinding {
@@ -250,6 +260,7 @@ export interface WorkflowState {
 }
 
 export interface AgentConfig {
+  schemaVersion?: number;
   tenantId: string;
   displayName: string;
   enabled: boolean;
@@ -294,12 +305,22 @@ export interface ConversationState {
   updatedAt: string;
 }
 
+export type InboundContent =
+  | { kind: "text"; text: string }
+  | { kind: "image"; url?: string; mediaId?: string; caption?: string; mimeType?: string }
+  | { kind: "audio"; url?: string; mediaId?: string; mimeType?: string }
+  | { kind: "document"; url?: string; mediaId?: string; filename?: string; caption?: string; mimeType?: string }
+  | { kind: "location"; latitude: number; longitude: number; name?: string; address?: string }
+  | { kind: "interactive_reply"; id?: string; title: string; replyType: "button" | "list" };
+
 export interface InboundEnvelope {
   tenantId: string;
   channel: ChannelKind;
   conversationId: string;
   userId: string;
+  /** Compatibility projection for the conversational runtime. */
   text: string;
+  content?: InboundContent[];
   externalMessageId: string;
   receivedAt: string;
   replyTarget?: { value: string; kind?: string };
@@ -312,7 +333,25 @@ export interface InboundEnvelope {
 
 export type OutboundMessage =
   | { kind: "text"; text: string }
-  | { kind: "document"; url: string; filename?: string; caption?: string };
+  | { kind: "document"; url: string; filename?: string; caption?: string }
+  | { kind: "image"; url: string; caption?: string }
+  | { kind: "interactive"; body: string; buttons?: Array<{ id: string; title: string }>; list?: { buttonText: string; sections: Array<{ title?: string; rows: Array<{ id: string; title: string; description?: string }> }> } };
+
+export interface ChannelDeliveryReceipt {
+  providerMessageId?: string;
+  acceptedAt: string;
+  status: DeliveryStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChannelDeliveryStatus {
+  providerMessageId: string;
+  status: DeliveryStatus;
+  occurredAt: string;
+  errorCode?: string;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface AgentRunResult {
   text: string;
@@ -330,7 +369,18 @@ export interface ToolContext {
 export interface ToolExecutionResult {
   ok: boolean;
   data?: unknown;
-  error?: { code: string; message: string };
+  error?: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+    category?: ToolErrorCategory;
+  };
+  metadata?: {
+    upstreamRequestId?: string;
+    latencyMs?: number;
+    attempts?: number;
+    statusCode?: number;
+  };
 }
 
 export interface OtpChallenge {
@@ -368,5 +418,6 @@ export interface ProcessedEventRecord {
   outbound: OutboundMessage[];
   processedAt: string;
   deliveredAt?: string;
+  deliveries?: ChannelDeliveryReceipt[];
   expiresAt?: number;
 }
