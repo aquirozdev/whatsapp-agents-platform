@@ -68,6 +68,7 @@ const tenant: AgentConfig = {
         verifyTool: "verify_otp",
         verifyInput: { challengeId: "{{_verification.verify.challengeId}}", code: "{{input}}" },
         successPath: "verified",
+        subjectFrom: "identity.customerId",
         prompt: "Código OTP",
       },
       { id: "accounts", type: "tool", tool: "list_accounts", input: { customerId: "{{identity.customerId}}" }, saveAs: "accounts" },
@@ -111,8 +112,47 @@ describe("WorkflowRuntime", () => {
     expect(success.text).toContain("Disponible 10.00 / contable 12.00");
     expect(success.text).toContain("Fin");
     expect(conversation.verification.level).toBe("otp");
+    expect(conversation.verification.subjectId).toBe("c-1");
     expect(conversation.workflow?.status).toBe("completed");
     expect(tools.calls).toEqual(["resolve_customer", "send_otp", "verify_otp", "verify_otp", "list_accounts", "balance"]);
+  });
+
+  it("does not reuse an OTP session verified for another subject", async () => {
+    const store = new FakeStore();
+    const tools = new FakeTools();
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const conversation = state();
+    conversation.verification = {
+      level: "otp",
+      expiresAt: Math.floor(Date.now() / 1000) + 600,
+      subjectId: "different-customer",
+    };
+
+    expect((await runtime.start(tenant, conversation, "balance", "m1")).text).toContain("¿Acepta?");
+    expect((await runtime.handleInput(tenant, conversation, "sí", "m2")).text).toContain("Identificación");
+    const result = await runtime.handleInput(tenant, conversation, "12345", "m3");
+
+    expect(result.text).toContain("Código OTP");
+    expect(tools.calls).toEqual(["resolve_customer", "send_otp"]);
+  });
+
+  it("reuses an active OTP session only for the same subject", async () => {
+    const store = new FakeStore();
+    const tools = new FakeTools();
+    const runtime = new WorkflowRuntime(store as unknown as PlatformStore, tools as unknown as ToolRegistry);
+    const conversation = state();
+    conversation.verification = {
+      level: "otp",
+      expiresAt: Math.floor(Date.now() / 1000) + 600,
+      subjectId: "c-1",
+    };
+
+    expect((await runtime.start(tenant, conversation, "balance", "m1")).text).toContain("¿Acepta?");
+    expect((await runtime.handleInput(tenant, conversation, "sí", "m2")).text).toContain("Identificación");
+    const result = await runtime.handleInput(tenant, conversation, "12345", "m3");
+
+    expect(result.text).toContain("Disponible 10.00 / contable 12.00");
+    expect(tools.calls).toEqual(["resolve_customer", "list_accounts", "balance"]);
   });
 
   it("persists consent for future workflow runs", async () => {
