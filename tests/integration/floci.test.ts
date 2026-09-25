@@ -132,14 +132,16 @@ describe.skipIf(!enabled)("Floci AWS adapter integration", () => {
       acceptedAt: "2026-01-01T00:00:00.000Z",
       status: "accepted",
     });
-    expect((await store.getProcessedEvent("wamid.delivery"))?.deliveries?.[0]?.providerMessageId).toBe("wamid.provider");
+    expect((await store.getProcessedEvent("wamid.delivery"))?.acceptedOutboundCount).toBe(1);
 
     await store.updateOutboundStatus({
       providerMessageId: "wamid.provider",
       status: "delivered",
       occurredAt: "2026-01-01T00:01:00.000Z",
     });
-    expect((await store.getProcessedEvent("wamid.delivery"))?.deliveredAt).toBe("2026-01-01T00:01:00.000Z");
+    const delivered = await store.getProcessedEvent("wamid.delivery");
+    expect(delivered?.deliveryStatus?.status).toBe("delivered");
+    expect(delivered?.deliveredAt).toBe("2026-01-01T00:01:00.000Z");
 
     expect(await store.claimToolRateSlot("tenant-a", "lookup", "u1", 60, 1)).toBe(true);
     expect(await store.claimToolRateSlot("tenant-a", "lookup", "u1", 60, 1)).toBe(false);
