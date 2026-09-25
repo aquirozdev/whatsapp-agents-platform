@@ -273,6 +273,13 @@ export class WorkflowRuntime {
         this.next(workflow); continue;
       }
 
+      if (step.type === "message") {
+        const rendered = renderValue(step.message, this.context(workflow.data, state)) as OutboundMessage;
+        outbound.push(rendered);
+        this.next(workflow);
+        continue;
+      }
+
       if (step.type === "end") {
         if (step.message) outbound.push({ kind: "text", text: renderTemplate(step.message, this.context(workflow.data, state)) });
         workflow.status = "completed"; workflow.awaiting = undefined; this.clearTerminalData(definition, workflow);
