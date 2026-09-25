@@ -13,6 +13,7 @@ import type { AgentConfig, ChannelDeliveryReceipt, ChannelDeliveryStatus, Consen
 import type { PlatformStorePort } from "../ports/store.js";
 import { ConversationConflictError } from "../ports/store.js";
 import { awsClientOptions } from "../adapters/aws/client-options.js";
+import { migrateAgentConfig } from "../core/config-migrations.js";
 
 const defaultTableName = process.env.TABLE_NAME ?? "WhatsappAgentsPlatform";
 const defaultClient = DynamoDBDocumentClient.from(new DynamoDBClient(awsClientOptions()), {
@@ -34,7 +35,8 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `TENANT#${tenantId}`, sk: "CONFIG" },
     }));
-    return result.Item?.config as AgentConfig | undefined;
+    const config = result.Item?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async getTenantVersion(tenantId: string, version: number): Promise<AgentConfig | undefined> {
@@ -42,7 +44,8 @@ export class PlatformStore implements PlatformStorePort {
       TableName: this.tableName,
       Key: { pk: `TENANT#${tenantId}`, sk: `CONFIG#v${version}` },
     }));
-    return result.Item?.config as AgentConfig | undefined;
+    const config = result.Item?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async getTenantByWhatsAppPhoneNumberId(phoneNumberId: string): Promise<AgentConfig | undefined> {
@@ -53,7 +56,8 @@ export class PlatformStore implements PlatformStorePort {
       ExpressionAttributeValues: { ":pk": `WA_PHONE#${phoneNumberId}` },
       Limit: 1,
     }));
-    return result.Items?.[0]?.config as AgentConfig | undefined;
+    const config = result.Items?.[0]?.config as AgentConfig | undefined;
+    return config ? migrateAgentConfig(config) : undefined;
   }
 
   async putTenant(config: AgentConfig): Promise<number> {
