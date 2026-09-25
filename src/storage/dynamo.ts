@@ -9,7 +9,7 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge } from "../core/types.js";
+import type { AgentConfig, ConsentRecord, ConversationState, OtpChallenge, ProcessedEventRecord } from "../core/types.js";
 import type { PlatformStorePort } from "../ports/store.js";
 import { ConversationConflictError } from "../ports/store.js";
 import { awsClientOptions } from "../adapters/aws/client-options.js";
@@ -168,6 +168,62 @@ export class PlatformStore implements PlatformStorePort {
     }
   }
 
+  async commitTurn(state: ConversationState, expectedRevision: number, event: ProcessedEventRecord): Promise<void> {
+    const nextRevision = expectedRevision + 1;
+    state.updatedAt = new Date().toISOString();
+    state.messages = state.messages.slice(-30);
+    state.revision = nextRevision;
+
+    const conversationCondition = expectedRevision === 0
+      ? "attribute_not_exists(pk) OR attribute_not_exists(revision) OR revision = :expected"
+      : "revision = :expected";
+
+    const now = Math.floor(Date.now() / 1000);
+    const eventTtl = event.expiresAt ?? now + 86400;
+
+    try {
+      await this.client.send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: {
+                pk: conversationPk(state.tenantId, state.channel, state.conversationId),
+                sk: "STATE",
+                entity: "conversation",
+                revision: nextRevision,
+                state,
+                updatedAt: state.updatedAt,
+              },
+              ConditionExpression: conversationCondition,
+              ExpressionAttributeValues: { ":expected": expectedRevision },
+            },
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: {
+                pk: `EVENT#${event.externalMessageId}`,
+                sk: "EVENT",
+                entity: "processed_event",
+                event: { ...event, expiresAt: eventTtl },
+                processedAt: event.processedAt,
+                ttl: eventTtl,
+              },
+              ConditionExpression: "attribute_not_exists(pk)",
+            },
+          },
+        ],
+      }));
+    } catch (error) {
+      state.revision = expectedRevision;
+      if (error instanceof Error && ["TransactionCanceledException", "ConditionalCheckFailedException"].includes(error.name)) {
+        throw new ConversationConflictError();
+      }
+      throw error;
+    }
+  }
+
   async setConversationMode(tenantId: string, channel: string, conversationId: string, mode: "ai" | "human"): Promise<void> {
     await this.client.send(new UpdateCommand({
       TableName: this.tableName,
@@ -228,6 +284,24 @@ export class PlatformStore implements PlatformStorePort {
     }
   }
 
+  async getProcessedEvent(externalMessageId: string): Promise<ProcessedEventRecord | undefined> {
+    const result = await this.client.send(new GetCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+    }));
+    if (result.Item?.event) return result.Item.event as ProcessedEventRecord;
+    if (result.Item) {
+      return {
+        externalMessageId,
+        tenantId: "",
+        channel: "web",
+        outbound: [],
+        processedAt: String(result.Item.processedAt ?? ""),
+      };
+    }
+    return undefined;
+  }
+
   async isEventProcessed(externalMessageId: string): Promise<boolean> {
     const result = await this.client.send(new GetCommand({
       TableName: this.tableName,
@@ -248,6 +322,16 @@ export class PlatformStore implements PlatformStorePort {
         processedAt: new Date().toISOString(),
         ttl: now + ttlSeconds,
       },
+    }));
+  }
+
+  async markEventDelivered(externalMessageId: string, deliveredAt = new Date().toISOString()): Promise<void> {
+    await this.client.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: { pk: `EVENT#${externalMessageId}`, sk: "EVENT" },
+      UpdateExpression: "SET event.deliveredAt = :deliveredAt",
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":deliveredAt": deliveredAt },
     }));
   }
 
