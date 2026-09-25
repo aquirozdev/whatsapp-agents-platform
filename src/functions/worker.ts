@@ -34,20 +34,23 @@ async function authenticateApi(event: APIGatewayProxyEventV2) {
 }
 
 async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Promise<AgentRunResult | undefined> {
-  const tenant = await store.getTenant(inbound.tenantId);
-  if (!tenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled.`);
+  const activeTenant = await store.getTenant(inbound.tenantId);
+  if (!activeTenant?.enabled) throw new Error(`Tenant ${inbound.tenantId} is missing or disabled.`);
 
   const existing = await store.getEvent(inbound.externalMessageId);
   if (existing?.status === "completed") return undefined;
 
   if (existing?.status === "prepared") {
-    if (sendReply) await whatsapp.send(tenant, inbound, existing.outbound);
+    const deliveryTenant = existing.configVersion
+      ? (await store.getTenantVersion(inbound.tenantId, existing.configVersion)) ?? activeTenant
+      : activeTenant;
+    if (sendReply) await whatsapp.send(deliveryTenant, inbound, existing.outbound);
     await store.completeEvent(inbound.externalMessageId);
     return undefined;
   }
 
-  const result = await runtime.execute(tenant, inbound);
-  if (sendReply) await whatsapp.send(tenant, inbound, result.outbound);
+  const result = await runtime.execute(activeTenant, inbound);
+  if (sendReply) await whatsapp.send(activeTenant, inbound, result.outbound);
   await store.completeEvent(inbound.externalMessageId);
   return result;
 }
