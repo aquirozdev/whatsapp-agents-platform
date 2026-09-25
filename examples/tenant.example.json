@@ -3,11 +3,11 @@
   "displayName": "Cooperativa Demo",
   "enabled": true,
   "systemPrompt": "Eres el asistente virtual de Cooperativa Demo. Responde de forma clara y breve. Nunca inventes datos. Usa las herramientas cuando necesites información del sistema. Si una herramienta devuelve VERIFICATION_REQUIRED, solicita verificación OTP y no reveles información sensible hasta que la verificación sea válida. Si el usuario pide un asesor, usa human_handoff.",
-  "modelId": "",
+  "model": { "provider": "bedrock", "model": "YOUR_MODEL_ID" },
   "maxToolRounds": 6,
   "whatsapp": {
     "phoneNumberId": "123456789012345",
-    "accessTokenSecretArn": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/cooperativa-demo/whatsapp-token",
+    "accessTokenSecret": { "key": "whatsapp/access-token" },
     "graphApiVersion": "v26.0",
     "sendTimeoutMs": 10000
   },
@@ -74,7 +74,7 @@
         "method": "POST",
         "url": "https://api.example.com/accounts/balance",
         "headers": { "X-Client": "whatsapp-agent" },
-        "secretHeaders": { "Authorization": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:tenant/cooperativa-demo/core-api-auth" },
+        "secretHeaders": { "Authorization": { "key": "core-api/authorization" } },
         "bodyTemplate": { "accountId": "{{accountId}}" },
         "timeoutMs": 8000
       }
