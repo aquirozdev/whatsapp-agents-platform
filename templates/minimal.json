@@ -1,0 +1,22 @@
+{
+  "tenantId": "customer-demo",
+  "displayName": "Customer Demo",
+  "enabled": true,
+  "systemPrompt": "Eres el asistente virtual de Customer Demo. Responde de forma clara y breve. Nunca inventes datos. Si el usuario solicita atención humana, usa human_handoff.",
+  "maxToolRounds": 4,
+  "tools": [
+    {
+      "name": "human_handoff",
+      "kind": "builtin",
+      "description": "Transfer the conversation to a human operator.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string" }
+        },
+        "required": ["reason"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
