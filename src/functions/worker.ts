@@ -44,7 +44,11 @@ async function processInbound(inbound: InboundEnvelope, sendReply: boolean): Pro
   const result = await runtime.execute(tenant, inbound);
 
   if (sendReply && inbound.replyTo) {
-    for (const message of result.outbound) await sendWhatsAppOutbound(tenant, inbound.replyTo, message);
+    const recipient = {
+      value: inbound.replyTo,
+      type: inbound.replyToType ?? "phone",
+    } as const;
+    for (const message of result.outbound) await sendWhatsAppOutbound(tenant, recipient, message);
   }
 
   await store.markEventProcessed(inbound.externalMessageId);
